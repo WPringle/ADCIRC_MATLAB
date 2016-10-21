@@ -16,7 +16,7 @@ title = agrid ;
 
 N = fscanf(fid,'%g %g',2) ;
 
-Val = zeros(N(2),4) ;
+% Val = zeros(N(2),4) ;
 
 %
 % for i = 1: N(2)
@@ -28,7 +28,7 @@ Val = fscanf(fid,'%d %g %g %g \n', [4 N(2)])' ;
 
 %Val = Val(iv,:) ; 
 
-idx = zeros(N(1),5) ; 
+% idx = zeros(N(1),5) ; 
 %
 % for i = 1: N(1)
 %    idx(i,1:5) = fscanf(fid,'%d %d %d %d %d \n', 5) ; 
@@ -39,9 +39,9 @@ idx = fscanf(fid,'%d %d %d %d %d \n', [5 N(1)])' ;
 
 %idx = idx(iv,:) ; 
 
-VX = zeros(N(2),2) ;
-B = zeros(N(2),2) ;
-EToV = zeros(N(1),3) ;
+% VX = zeros(N(2),2) ;
+% B = zeros(N(2),2) ;
+% EToV = zeros(N(1),3) ;
 
 % Arrange it to a Nodal DG input
 VX = Val(:,2:3) ;
@@ -82,6 +82,7 @@ for i = 1: nope
 end
 % toc
 
+% ocean boundary
 opedat.nope = nope ; 
 opedat.neta = neta ;
 opedat.nvdll = nvdll ;
