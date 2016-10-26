@@ -1,7 +1,8 @@
 % Interpolates the global SAL term onto the mesh and outputs a fort.24
-%
+% 
 % Requires: readfort14.m
-%
+% Data required: FES2004 loads. Source at:
+% ftp://ftp.legos.obs-mip.fr/pub/soa/maree/tide_model/global_solution/fes2004/
 % By William Pringle Oct 20 2016
 
 clearvars; close all; clc; 
