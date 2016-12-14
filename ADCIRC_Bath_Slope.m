@@ -1,4 +1,4 @@
-function [Hx,Hy] = ADCIRC_Bath_Slope( EToV,xx,yy,B,SA)
+function [Hx,Hy] = ADCIRC_Bath_Slope( EToV,xx,yy,B)
 %ADCIRC_Bath_Slope : Gets the bathymetric slopes Hx and Hy at each node on 
 %                    an unstructured ADCIRC grid
 %
@@ -6,18 +6,19 @@ function [Hx,Hy] = ADCIRC_Bath_Slope( EToV,xx,yy,B,SA)
 %         xx   - n x 1 vector of x points (Cartesian)
 %         yy   - n x 1 vector of y points (Cartesian)
 %         B    - n x 1 vector of bathymetric depths
-%         SA   - search bandwidth
 %
 % Outputs: Hx  - n x 1 vector of bathymetric slope in x direction
 %          Hy  - n x 1 vector of bathymetric slope in y direction
 %
-% BY William Pringle, Oct 7th 2016
-
+% Created by William Pringle, Oct 7th 2016
+% Updated by William Pringle, Dec 2nd 2016 for faster performance
+%tic
 %% Get the element areas
 A = polyarea(xx(EToV(:,1:3))',yy(EToV(:,1:3))')';
 
-%% Compute the slopes for each element
-Hxe = zeros(size(A)); Hye = zeros(size(A));
+%% Compute the slopes for each element and sum over all nodes of that element
+Hx = zeros(size(xx)); Hy = zeros(size(xx));
+An  = zeros(size(xx));
 for n = 1:length(A)
     % Get x differences
     a = [ xx(EToV(n,3)) - xx(EToV(n,2))
@@ -30,32 +31,17 @@ for n = 1:length(A)
           yy(EToV(n,1)) - yy(EToV(n,2)) ];     
     
     % Compute Hx
-    Hxe(n) = 0.5 * B(EToV(n,:))'*b;
+    Hxe = 0.5 * B(EToV(n,:))'*b;
     
     % Compute Hy 
-    Hye(n) = 0.5 * B(EToV(n,:))'*a;
+    Hye = 0.5 * B(EToV(n,:))'*a;
+    
+    % Add in sum for nodes
+    Hx(EToV(n,:)) = Hx(EToV(n,:)) + Hxe;
+    Hy(EToV(n,:)) = Hy(EToV(n,:)) + Hye;
+    An(EToV(n,:)) = An(EToV(n,:)) + A(n);
 end
-
-Hx = zeros(size(xx)); Hy = zeros(size(xx));
-ne = length(A);
-%% Get slopes for each node
-for i = 1:length(xx)
-     if i == 1
-        [I,~] = find(EToV(:,1:3) == i);
-     else
-        % search radius is SA
-        ns = max(1,min(I)-SA);
-        nee = min(ne,max(I)+SA);
-        [I,~] = find(EToV(ns:nee,1:3) == i); 
-        I = I + double(ns) - 1;
-     end
-     if isempty(I)
-        % Search failed
-        [I,~] = find(EToV(:,1:3) == i); 
-     end
-     Hx(i) = sum(Hxe(I))/sum(A(I));
-     Hy(i) = sum(Hye(I))/sum(A(I));
+Hx = Hx./An;
+Hy = Hy./An;
+%toc
 end
-
-end
-

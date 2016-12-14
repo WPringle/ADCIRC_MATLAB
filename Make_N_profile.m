@@ -8,6 +8,7 @@
 %     http://www.nodc.noaa.gov/OC5/SELECT/dbsearch/dbsearch.html  %
 %  Outputs:     A .mat file of profiles of N at each desired      %
 %               contour level as specified at various locations   %
+%  Requires:    TEOS toolbox http://www.teos-10.org/software.htm  %
 %  Project:     Indian Ocean and Marginal Seas                    %
 %  Author:      William Pringle                                   %
 %  Created:     Oct 5 2016                                        %
@@ -129,6 +130,10 @@ for i = 1:L;
     end
     % Convert the depth profile to a pressure profile
     p = gsw_p_from_z(-z{i},lat(i));
+    
+    if any(p < -1.5 | p > 12000)
+        continue;
+    end
     
     % Calculate absolute salinity from SP and p
     [SA, in_ocean] = gsw_SA_from_SP(SP{i},p,lon(i),lat(i));
