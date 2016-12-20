@@ -29,7 +29,7 @@ NE = length(EToV) ;
 NP = length(VX) ; 
 
 % write NE, NP
-fprintf(fid, '%d %d  ! %s \n', NE, NP, 'NE, NP' ) ; 
+fprintf(fid, '%d %d \n', NE, NP ) ; 
 
 % Improve write efficiency
 % Vertices
@@ -41,25 +41,26 @@ fprintf( fid, '%10d %16.10f %16.10f %18.10e \n', pval' ) ;
 ElemCon = [ [1:1:NE]' linspace(3,3,NE)' EToV] ; 
 fprintf(fid, '%d %d %d %d %d \n', ElemCon' ) ; 
 
-% Openboudary
-fprintf(fid, '%d   ! %s \n', opedat.nope, ' NOPE ' ) ; 
-fprintf(fid, '%d   ! %s \n', opedat.neta, ' NETA ' ) ; 
-
+% Open boundary
+fprintf(fid, '%d %s \n', opedat.nope, '= Number of open boundaries' ) ; 
+fprintf(fid, '%d %s \n', opedat.neta, '= Total number of open boundary nodes' ) ; 
 
 for i = 1: opedat.nope
-   fprintf(fid, ' %d  %d  ! %s \n', opedat.nvdll(i), opedat.ibtypee(i), ' nvdall(i), ibtypee(i)' ) ; 
-   
-   fprintf( fid, '%d \n', nonzeros(opedat.nbdv(:,1)) ) ; 
+   fprintf(fid, ' %d %s \n', opedat.nvdll(i),...
+           ['= Number of nodes for open boundary ' num2str(i)]) ; 
+       
+   fprintf( fid, '%d \n', nonzeros(opedat.nbdv(:,i)) ) ; 
 end
 
-% Land boudnary
-fprintf(fid, '%d  ! %s \n', boudat.nbou, ' NBOU' ) ; 
-fprintf(fid, '%d  ! %s \n', boudat.nvel, ' NVEL' ) ; 
+% Land boundary
+fprintf(fid, '%d %s \n', boudat.nbou, '= Number of land boundaries' ) ; 
+fprintf(fid, '%d %s \n', boudat.nvel, '= Total number of land boundary nodes' ) ; 
 
 %
 for i = 1: boudat.nbou
-    % Bc type
-    fprintf( fid, '%d %d   ! %s \n', boudat.nvell(i), boudat.ibtype(i), ' nvell(i), ibtype(i)' ) ; 
+    % Bc type:q
+    fprintf( fid, '%d %d %s \n', boudat.nvell(i), boudat.ibtype(i), ...
+            ['= Number of nodes for land boundary ' num2str(i)]) ; 
     
     switch ( boudat.ibtype(i) )
         case {0,1,2,10,11,12,20,21,22,30,60,61,101,52}
