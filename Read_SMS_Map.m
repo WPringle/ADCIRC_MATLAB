@@ -44,8 +44,14 @@ while strcmp(type{1},'ARC')
     % Put in type
     if adc{3} == 0 
         arc(id{2}).type = 'outer';
+        if adc{2} == 2
+            arc(id{2}).subtype = 'mainland';
+        elseif adc{2} == 1
+            arc(id{2}).subtype = 'ocean';
+        end
     else
         arc(id{2}).type = 'inner';
+        arc(id{2}).subtype = 'island';
     end
     
     % reading endings
@@ -73,6 +79,7 @@ end
 % Now make outer polygon by stitching together ocean and mainland
 % boundaries in correct order
 arc_o  = arc;
+polygon.mainland = [];
 for op = 1:op_num
     for ii = 1:length(arc)
         if strcmp(arc(ii).type,'outer') 
@@ -81,6 +88,7 @@ for op = 1:op_num
                                  arc(ii).vertices(:,1:2); ...
                                  node(arc(ii).node(2),:)];
                 node_b = node(arc(ii).node(2),:);
+                make_mainland
                 arc(ii) = [];
                 break
             else
@@ -89,6 +97,7 @@ for op = 1:op_num
                                                arc(ii).vertices(:,1:2); ...
                                                node(arc(ii).node(2),:)];
                     node_b = node(arc(ii).node(2),:);
+                    make_mainland
                     arc(ii) = [];
                     break
                 elseif node(arc(ii).node(2),1) == node_b(1);
@@ -96,6 +105,7 @@ for op = 1:op_num
                                        flipud(arc(ii).vertices(:,1:2)); ...
                                                node(arc(ii).node(1),:)];
                     node_b = node(arc(ii).node(1),:);
+                    make_mainland
                     arc(ii) = [];
                     break
                 end
@@ -104,11 +114,22 @@ for op = 1:op_num
     end
 end
 
+    function  make_mainland
+       if strcmp(arc(ii).subtype,'mainland')
+           polygon.mainland(end+1:end+arc(ii).v_num+3,:) = ...
+                            [node(arc(ii).node(1),:); ...
+                             arc(ii).vertices(:,1:2); ...
+                             node(arc(ii).node(2),:);
+                             NaN NaN]; 
+       end
+    end
+
 %% Plot the map
 figure(1);
 plot(polygon.outer(:,1),polygon.outer(:,2))
 hold on
 plot(polygon.inner(:,1),polygon.inner(:,2))
+plot(polygon.mainland(:,1),polygon.mainland(:,2))
 %EOF
 end
 
