@@ -153,6 +153,12 @@ while 1
   if ( max(sqrt(sum(deltat*Ftot(d<-geps,:).^2,2))/h0) < dptol || it > itmax )
       break; 
   end
+  
+  tq = gettrimeshquan( p, t);
+  if (prctile(tq.qm,0.98) > 0.5)
+      break;
+  end
+  
   toc
 end
 
