@@ -1,0 +1,11 @@
+#!/bin/csh
+
+#$ -M wpringle@nd.edu
+#$ -m abe
+#$ -pe smp 12
+#$ -q *@@westerink_d6cneh
+#$ -N distmesh_10km
+
+module load matlab/9.0
+
+matlab -nosplash -nodisplay -nodesktop < Distmesh_call.m
