@@ -2,7 +2,7 @@ function [Hx,Hy] = ADCIRC_Bath_Slope( EToV,xx,yy,B)
 %ADCIRC_Bath_Slope : Gets the bathymetric slopes Hx and Hy at each node on 
 %                    an unstructured ADCIRC grid
 %
-% Inputs: EToV - n x 3 array of triangular elements (node indices)
+% Inputs: EToV - nE x 3 array of triangular elements (node indices)
 %         xx   - n x 1 vector of x points (Cartesian)
 %         yy   - n x 1 vector of y points (Cartesian)
 %         B    - n x 1 vector of bathymetric depths
