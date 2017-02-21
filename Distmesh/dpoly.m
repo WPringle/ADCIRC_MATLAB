@@ -16,7 +16,7 @@ nvs=size(ps,1)-1;
 
 memneed = np*nvs*8/10^9  ; % assume real number  
 if isempty(gcp('nocreate'))
-    disp('dsegment serial')
+    %disp('dsegment serial')
     maxmem = 4; % 4 Gb
     if ( memneed < maxmem ) % 8 Gb
        %ds=dsegment(p,pv) ;
@@ -48,7 +48,7 @@ if isempty(gcp('nocreate'))
        end
     end
 else
-    disp('dsegment parallel')
+    %disp('dsegment parallel')
     d = zeros(length(p),1); iloc = zeros(length(p),1);
     parfor ii = 1:np
         ds              = dsegment(p(ii,:),ps);
@@ -57,28 +57,34 @@ else
 end
 
 if isempty(gcp('nocreate'))
-    disp('InPolygon serial')
+    %disp('InPolygon serial')
     in = InPolygon(p(:,1),p(:,2),pv(:,1),pv(:,2));
 else
     % Parallel calls to evaulate inpolygon function
-    disp('InPolygon parallel')
-    Pool = gcp();
-    for idx = 1:Pool.NumWorkers
-        ns = int64((idx-1)*np/Pool.NumWorkers)+1;
-        ne = int64(idx*np/Pool.NumWorkers);
+    %disp('InPolygon parallel')
+    in = zeros(length(p),1);
+%     parfor ii = 1:np
+%         in(ii) = InPolygon(p(ii,1),p(ii,2),pv(:,1),pv(:,2));
+%         if mod(ii,1d5) == 0
+%             disp(ii)
+%         end
+%     end
+    Pool = gcp(); num_p = Pool.NumWorkers;
+    for idx = 1:num_p
+        ns = int64((idx-1)*np/num_p)+1;
+        ne = int64(idx*np/num_p);
         f(idx) = parfeval(Pool,@InPolygon,1,...
                           p(ns:ne,1),p(ns:ne,2),pv(:,1),pv(:,2));
     end
-    in = zeros(size(d));
-    for idx = 1:Pool.NumWorkers
+    for idx = 1:num_p
         [idx_t, in_t] = fetchNext(f); % Get results into a cell array
-        ns = int64((idx_t-1)*np/Pool.NumWorkers)+1;
-        ne = int64(idx_t*np/Pool.NumWorkers);
+        ns = int64((idx_t-1)*np/num_p)+1;
+        ne = int64(idx_t*np/num_p);
         in(ns:ne) = in_t;
     end
 end
 d=(-1).^(in).*d;
-disp('dpoly out')
+%disp('dpoly out')
 %
 
 % MEXED

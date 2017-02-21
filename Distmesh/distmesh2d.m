@@ -1,4 +1,4 @@
-function [p,t]=distmesh2d(fd,fh,h0,bbox,pfix,itmax,plot_on)
+function [p,t]=distmesh2d(fd,fh,fci,h0,bbox,p,pfix,itmax,plot_on)
 %DISTMESH2D 2-D Mesh Generator using Distance Functions.
 %   [P,T]=DISTMESH2D(FD,FH,H0,BBOX,PFIX,plot_on)
 %
@@ -6,8 +6,11 @@ function [p,t]=distmesh2d(fd,fh,h0,bbox,pfix,itmax,plot_on)
 %      T:         Triangle indices (NTx3)
 %      FD:        Distance function d(x,y)
 %      FH:        Scaled edge length function h(x,y)
+%      FCI:       Change interpolant function for points with small
+%                 interiori angle
 %      H0:        Initial edge length
 %      BBOX:      Bounding box [xmin,ymin; xmax,ymax]
+%      P:         Initial distribution of p if exist
 %      PFIX:      Fixed node positions (NFIXx2)
 %      ITMAX      Maximum number of iterations allowed
 %      PLOT_ON:   Flag to plot or not
@@ -69,23 +72,24 @@ dptol=.0008; ttol=.1; Fscale=1.2;
 deltat = 0.08 ;
 % deltat=.01 ;
 geps=.001*h0; deps=sqrt(eps)*h0;
-densityctrlfreq=30;
+densityctrlfreq=30; interiorangfreq = 50;
 
-%% 1. Create initial distribution in bounding box (equilateral triangles)
-[x,y]=meshgrid(bbox(1,1):h0:bbox(2,1),bbox(1,2):h0*sqrt(3)/2:bbox(2,2));
-x(2:2:end,:)=x(2:2:end,:)+h0/2;                      % Shift even rows
-p=[x(:),y(:)];                                       % List of node coordinates
+if isempty(p)
+    %% 1. Create initial distribution in bounding box (equilateral triangles)
+    [x,y]=meshgrid(bbox(1,1):h0:bbox(2,1),bbox(1,2):h0*sqrt(3)/2:bbox(2,2));
+    x(2:2:end,:)=x(2:2:end,:)+h0/2;                      % Shift even rows
+    p=[x(:),y(:)];                                       % List of node coordinates
 
-%% 2. Remove points outside the region, apply the rejection method
-p=p(feval(fd,p,0)<geps,:);                      % Keep only d<0 points
-r0=1./feval(fh,p).^2;                           % Probability to keep point
-p=p(rand(size(p,1),1)<r0./max(r0),:);                % Rejection method
+    %% 2. Remove points outside the region, apply the rejection method
+    p=p(feval(fd,p,0)<geps,:);                      % Keep only d<0 points
+    r0=1./feval(fh,p).^2;                           % Probability to keep point
+    p=p(rand(size(p,1),1)<r0./max(r0),:);           % Rejection method
+end
 if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end     % Remove duplicated nodes
 pfix=unique(pfix,'rows'); nfix=size(pfix,1);
+% return ; 
 p=[pfix; p];                                         % Prepend fix points
 N=size(p,1);                                         % Number of points N
-
-% return ; 
 
 %% Iterate
 count=0;
@@ -96,7 +100,9 @@ end
 toc
 while 1
   tic
-  disp(sprintf('Iteration = %d',it)) ;     
+  if mod(it,10) == 0
+    disp(sprintf('Iteration = %d',it)) ;    
+  end
   count=count+1;
   
   % 3. Retriangulation by the Delaunay algorithm
@@ -117,7 +123,34 @@ while 1
     end
     %
   end
-
+  
+  % Getting element quality and check goodness
+  tq = gettrimeshquan( p, t);
+  if (length(find(tq.qm > 0.6))/length(t) > 0.9995)
+      disp('quality of mesh is good enough, exit')
+      break;
+  end
+  
+  % Interior angle control, adding points
+  if count ~= 1 && mod(count,densityctrlfreq) == 1
+      % Only add points at triangle midpoint if interior angle is less than 30
+      if any(tq.vang < 30/180*pi)
+          [I,~] = find(tq.vang < 30/180*pi);
+          unq = unique(I);
+          a = [unq histc(I,unq)];
+          % Only add points where one angle is small and others are not
+          if any(a(:,2) == 1)
+              pmid=(p(t(:,1),:)+p(t(:,2),:)+p(t(:,3),:))/3; 
+              p = [p; pmid(a(a(:,2) == 1,1),:)];
+              % Changing the edge function interpolant so the new points 
+              % are not just deleted later on
+              fci(pmid(a(a(:,2) == 1,1),:));
+              N=size(p,1); pold=inf;
+              continue;
+          end
+      end    
+  end
+  
   % 6. Move mesh points based on bar lengths L and forces F
   barvec=p(bars(:,1),:)-p(bars(:,2),:);              % List of bar vectors
   L=sqrt(sum(barvec.^2,2));                          % L = Bar lengths
@@ -147,16 +180,13 @@ while 1
   % 8. Termination criterion: All interior nodes move less than dptol (scaled)
   it = it + 1 ;
   if ( it > itmax )
+       disp('too many iterations, exit')
        break ; 
   end
    
-  if ( max(sqrt(sum(deltat*Ftot(d<-geps,:).^2,2))/h0) < dptol || it > itmax )
+  if ( max(sqrt(sum(deltat*Ftot(d<-geps,:).^2,2))/h0) < dptol )
+      disp('no movement of nodes, exit')
       break; 
-  end
-  
-  tq = gettrimeshquan( p, t);
-  if (prctile(tq.qm,0.98) > 0.5)
-      break;
   end
   
   toc

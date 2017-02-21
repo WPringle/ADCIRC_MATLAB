@@ -21,11 +21,11 @@ idxcm = [ 1 2 3
           3 1 2 ] ;
 
 % Internal angle 
-%tq.vang = zeros(ne,3) ;
-%for i = 1: 3
-%    tq.vang(:,i) = acos((-ds(:,idxcm(i,1)).^2 +  ds(:,idxcm(i,2)).^2 + ...
-%            ds(:,idxcm(i,3)).^2)./(2*ds(:,idxcm(i,2)).*ds(:,idxcm(i,3)))) ;
-%end
+tq.vang = zeros(ne,3) ;
+for i = 1: 3
+   tq.vang(:,i) = acos((-ds(:,idxcm(i,1)).^2 +  ds(:,idxcm(i,2)).^2 + ...
+           ds(:,idxcm(i,3)).^2)./(2*ds(:,idxcm(i,2)).*ds(:,idxcm(i,3)))) ;
+end
 %
 
 % Length 
