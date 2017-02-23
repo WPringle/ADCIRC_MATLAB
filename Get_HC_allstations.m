@@ -1,7 +1,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Tidal analysis of data at all stations in the Tide_locations_dates.csv  %
-% and output the constituent amplitudes and phases in a .txt file and a   %
-% .psxy file to produce a figgen scatter.                                 %
+% and output the constituent amplitudes and phases in a .cvs table file   %
+% and a .psxy file to produce a figgen scatter.                           %
 %                                                                         %
 % Requires: Utide functions, obtained from;                               %
 % https://www.mathworks.com/matlabcentral/fileexchange/                   %
@@ -9,12 +9,18 @@
 %                                                                         %
 % NETCDF data obtained from: http://uhslc.soest.hawaii.edu/data/?rq       %
 %                                                                         %
-% William Pringle 2016                                                    %
+% William Pringle Dec 2016                                                %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%% Initializations
 clearvars; close all; clc;
+const_n = {'Name','Country','Latitude','Longitude','Start','End',...
+           'M2_amp','M2_phs','S2_amp','S2_phs',...
+           'N2_amp','N2_phs','K2_amp','K2_phs',...
+           'K1_amp','K1_phs','O1_amp','O1_phs',...
+           'P1_amp','P1_phs','Q1_amp','Q1_phs'};
 %
-fid = fopen('Alltides_HC_allyears.txt','w');
+%fid = fopen('Alltides_HC_allyears.txt','w');
 ys = 1980; ye = 2016;
 year = datenum(['01-Jan-' num2str(ys)]); 
 year_n = datenum(['01-Jan-' num2str(ye)]); 
@@ -28,20 +34,31 @@ Lats     = str2double(M.textdata(2:L,6));
 Long     = str2double(M.textdata(2:L,7));
 Name     = M.textdata(2:L,1);
 Location = M.textdata(2:L,4);
+Country  = M.textdata(2:L,5);
+Startdate = M.textdata(2:L,8);
+Enddate   = M.textdata(2:L,9);
 Version  = M.textdata(2:L,3);
 Data     = M.data(:,1);
 NetCDF   = M.data(:,3);
-const    = {'M2','S2','K1','O1','Q1','P1','N2','K2'};
+const    = {'M2','S2','N2','K2','K1','O1','P1','Q1'};
 format   = cell(length(const)+1,1); 
 for i = 1:length(format)
     format{i} = '%s ';
 end
-fprintf(fid,[format{:} '\n'],'Location',const{:});
+%fprintf(fid,[format{:} '\n'],'Location',const{:});
 format   = cell(length(const)*2,1); 
 for i = 1:length(const)*2
     format{i} = '%7.3f, ';
 end
+
+%% Doing the analysis
 for s = 1:length(Name)
+   station{s,1} = Location{s};
+   station{s,2} = Country{s};
+   station{s,3} = Lats(s);
+   station{s,4} = Long(s);
+   station{s,5} = Startdate{s};
+   station{s,6} = Enddate{s};
     if NetCDF(s) == 1
         FileName = [file_s Name{s} upper(Version{s}) file_R];
         if ~exist(FileName, 'file')
@@ -100,6 +117,8 @@ for s = 1:length(Name)
         for k = 1:length(const)
             for p = 1:length(coef.name)
                 if coef.name{p} == const{k}
+                    station{s,6+2*k-1} = coef.A(p)/1000;
+                    station{s,6+2*k} = coef.g(p);
                     entry(2*k-1) = coef.A(p)/1000;
                     entry(2*k)   = coef.g(p);
                     break
@@ -109,10 +128,15 @@ for s = 1:length(Name)
                 fida{k} = fopen([const{k} '_amp.63.nc.psxy'],'w');
                 fidp{k} = fopen([const{k} '_phs.63.nc.psxy'],'w');
             end
-            fprintf(fida{k},'%9.3f %9.3f %8.3f %s \n',Long(s),Lats(s),entry(2*k-1),'5p');
-            fprintf(fidp{k},'%9.3f %9.3f %8.3f %s \n',Long(s),Lats(s),entry(2*k),'5p');
-        end
-        fprintf(fid,['%s ,' format{:} '\n'],Location{s},entry);
+            fprintf(fida{k},'%9.3f %9.3f %8.3f %s \n',...
+                    Long(s),Lats(s),entry(2*k-1),'5p');
+            fprintf(fidp{k},'%9.3f %9.3f %8.3f %s \n',...
+                    Long(s),Lats(s),entry(2*k),'5p');
+         end
+%         fprintf(fid,['%s ,' format{:} '\n'],Location{s},entry);
     end
 end
-fclose(fid);
+
+%% Printing into table
+T = cell2table(station,'VariableNames',const_n);
+writetable(T,'IndianOcean_HC_allyears.csv')
