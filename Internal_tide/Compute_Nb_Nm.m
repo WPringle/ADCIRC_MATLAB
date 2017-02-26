@@ -1,7 +1,7 @@
-function [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,...
-                                 N,lon_N,lat_N,lon0,lat0)
+function [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,N,lon_N,lat_N,proj)
+                                  %,lon0,lat0)
 % Compute_Nb_Nm: Compute the buoyancy frequency, N at the seabed (Nb) and 
-%                the mean over the depth (Nm) for an unstructured mesh from
+%                the mean over the depth (Nm) for an unstrcutred mesh from
 %                scattered grid points of N at specified contours
 %
 % [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,N,lon_N,lat_N,lon0,lat0)
@@ -12,8 +12,8 @@ function [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,...
 %         N        - cell of buoyancy freq. scatter points for each contour
 %         lon_N    - cell of longitude scatter points for each contour
 %         lat_N    - cells of latitude scatter points for each contour
-%         lon0     - longitude centre of CPP conversion
-%         lat0     - latitude centre of CPP conversion 
+%         proj     - string that defines the projection to use
+%                    e.g. 'Mercator'.., (type m_proj('set') for options)
 %
 % Output : Nb     - Buoyancy frequency at seabed
 %          Nm     - Depth-averaged buoyancy frequency over depth
@@ -24,12 +24,15 @@ function [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,...
 % Set minimum length for interpolating data
 Min_length = 30;
 
-% Get xx and yy by CPP conversion
-R = 6378206.4; % radius of earth
+% Projection set
+m_proj(proj,'lon',[ min(lon_M) max(lon_M)],'lat',[ max(lat_M) max(lat_M)])
 
-xx = lon_M * pi/180;  yy = lat_M * pi/180; 
-xx = R * (xx - lon0) * cos(lat0);
-yy = R * yy;
+% Conversion to projection coordinates
+[xx,yy] = m_ll2xy(lon_M,lat_M);        
+% 
+% xx = lon_M * pi/180;  yy = lat_M * pi/180; 
+% xx = R * (xx - lon0) * cos(lat0);
+% yy = R * yy;
 
 %% Calculation
 % initialisation
@@ -44,10 +47,11 @@ for zvalue = 1:length(zcontour)
     x = lon_N{zvalue};
     y = lat_N{zvalue};
     x = double(x); y = double(y);
-    % CPP conversion
-    x = x * pi/180;  y = y * pi/180; 
-    x = R * (x - lon0) * cos(lat0);
-    y = R * y; 
+    % Projection conversion
+    [x,y] = m_ll2xy(x,y);   
+    %x = x * pi/180;  y = y * pi/180; 
+    %x = R * (x - lon0) * cos(lat0);
+    %y = R * y; 
     
     % Make the interpolant using scatteredInterpolant natural
     F = scatteredInterpolant(x,y,N{zvalue},'natural','nearest');

@@ -4,31 +4,31 @@
 %               and bathymetry data to compute internal tide      %
 %               friction coefficients on unstructured mesh        %
 %  Inputs:      1) .mat files of N values at constant contours    %
-%               2) Bathymetry data (e.g. gridded GEBCO)           %
-%               3) Unstructured grid nodes                        %                           
+%               2) Unstructured grid nodes                        %                           
 %  Outputs:     A fort.13 formatted file for use in ADCIRC/SMS    %
 %  Project:     Indian Ocean and Marginal Seas                    %
 %  Author:      William Pringle                                   %
 %  Created:     Oct 5 2016                                        %
-%  Updated:     Oct 24 2016, Dec 14 2016                          %
-%  Requires:    function - readfort14_nodes, Compute_Nb_Nm        %
-%               & ADCIRC_Bath_Slope                               %
+%  Updated:     Oct 24 2016, Dec 14 2016, Feb 25 2017             %
+%  Requires:    function - readfort14, Compute_Nb_Nm,             %
+%               ADCIRC_Bath_Slope,                                %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 clearvars; 
 clc; 
 close all;
-%
+% 
 %% Set parameters and filenames here
-% CPP conversion coefficents (centre of projection and projection radius)
-lon0 = 75.015117 * pi/180; lat0 = -30.890245 * pi/180;
-R = 6378206.4;
-
-% Choose tensor or scalar form
+% Choose tensor (Nycander), directional or scalar form
 type = 'tensor';
 
 % Use Nm or Nb for critical factor calculation
-crit = 'Nm';
+crit = 'Nb';
+
+% Choose projection type (can be any, not restricted to evenly-gridded data)
+proj = 'Mercator';
+% Radius of earth for conversion to actual distances
+R = 6378206.4; %[m]
 
 % Load save data or not (set zero for first run for current grid, 
 % set to 1 after running once for current grid)
@@ -41,48 +41,25 @@ psi = 2*7.29212d-5;
 omega = 2*pi/(12.4206012*3600); % M2 tidal frequency
 
 % Choose the dimensionless coefficient for the internal tide friction
-C_it = 1/2;
+% (Only used if not Nycander tensor form)
+C_it = 1.5;
 
-% Minimum and maximum allowable IT_Fric 
-MinFoldingTime = 6;  % hours
-MaxFoldingTime = 30; % days
+% % Minimum and maximum allowable IT_Fric 
+% MinFoldingTime = 6;  % hours
+% MaxFoldingTime = 30; % days
 MinDepth       = 100; % m 
 
-MaxIT = 1/(MinFoldingTime*3600);
-MinIT = 1/(MaxFoldingTime*24*3600);
-
 % ADCIRC mesh filame (fort.14)
-adcirc_filename = 'fort.14';
+adcirc_filename = '../IDIOMS_v6.3_SSG_D2G.grd';
 
 % n data filename (only .mat file atm)
 N_filename = 'E:\Global_Data\WOD_CTD_Casts\Indian_Ocean_N_100m_processed.mat';
 
 % save info filename
-S_filename = 'fort14_it_info.mat';
+S_filename = 'fort14_it_info_D2G.mat';
 %%
 %%%%%%%%%%Calculation region (should not need to alter below)%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% Deprecated section calculating slope directly from GEBCO 
-% %% Load GEBCO data and interpolate grad^2 onto mesh;
-% load(bath_filename); 
-% 
-% % CPP conversion to x, y and calculation of step size
-% lonr = lon' * pi/180; latr = lat' * pi/180; 
-% x = R * (lonr - lon0) * cos(lat0);
-% y = R * latr;
-% dx = x(2)-x(1);
-% dy = y(2)-y(1);
-% 
-% % Evaluate slope
-% [Hx, Hy] = gradient(depth,dx,dy);
-% 
-% % Grad^2
-% H2 = Hx.^2 + Hy.^2;
-% 
-% % Make gridded interpolant
-% [xv, yv] = ndgrid(x,y);
-% F = griddedInterpolant(xv,yv,H2','linear');
 
 if load_data == 1
     %% Just load the data saved from previous run
@@ -97,37 +74,44 @@ else
     end
     f = psi*sind(VX(:,2));
     
-    xx = VX(:,1) * pi/180;  yy = VX(:,2)* pi/180; 
-    xx = R * (xx - lon0) * cos(lat0);
-    yy = R * yy;
+    m_proj(proj,'lon',[ min(VX(:,1)) max(VX(:,1))],...
+                'lat',[ max(VX(:,2)) max(VX(:,2))])
+    [xx,yy] = m_ll2xy(VX(:,1),VX(:,2));             
 
-    % Do the interpolation onto the ADCIRC mesh
-    [Hx,Hy] = ADCIRC_Bath_Slope( EToV,xx,yy, B );
+    % Calculate slope directly on ADCIRC mesh
+    [Hx,Hy] = ADCIRC_Bath_Slope( EToV,R*xx,R*yy, B );
     H2_mesh = Hx.^2 + Hy.^2;
     %
     %% Load the constant contours of N values and compute Nb and Nmean
     load(N_filename); 
     %
     [Nb,Nm] = Compute_Nb_Nm(VX(:,1),VX(:,2),B,zcontour,...
-                            N,lon,lat,lon0,lat0);
+                            N,lon,lat,proj);
     
+    if strcmp(type,'tensor')
+        % Compute gradients of J from Nb, Nm and bathymetry B, and grid
+        [J,Jx,Jy] = Compute_J_Nycander(EToV,VX,B,Nb,Nm,proj);
+    end
+                        
     % save info for future computations 
-    save(S_filename,'Nb','Nm','Hx','Hy','f');                  
+    save(S_filename,'Nb','Nm','Hx','Hy','f','B','J','Jx','Jy');                  
 end
 
-%% Calculate F_it from Nb, Nm, and H2_mesh
+%% Calculate F_it from Nb, Nm, Jx, Jy, and H2_mesh or as reqd.
 if strcmp(type,'scalar')
    F_it = C_it * sqrt((Nb.^2 - omega^2).*(Nm.^2 - omega^2)).*H2_mesh/omega;
-elseif strcmp(type,'tensor')
+elseif strcmp(type,'directional')
    F_it = C_it * sqrt((Nb.^2 - omega^2).*(Nm.^2 - omega^2))/omega;
+elseif strcmp(type,'tensor')
+   F_it = Nb/(4*pi)*sqrt(1-f.^2/omega^2);
 end
 F_it = real(F_it); % in case becomes complex due to minus square root
 
 %% Compute criticality and normalise the friction
 if strcmp(crit,'Nm')
     alpha2  = (omega^2 - f.^2)./(Nm.^2 - omega^2);
-elseif strcmp(crit,'Nn')
-    alpha2  = (omega^2 - f.^2)./(Nn.^2 - omega^2);
+elseif strcmp(crit,'Nb')
+    alpha2  = (omega^2 - f.^2)./(Nb.^2 - omega^2);
 end
 gamma2 = max(H2_mesh./alpha2,1);
 
@@ -136,7 +120,7 @@ F_it = F_it./gamma2;
 % Make sure that if alpha2 < 0 that F_it is 
 % set equal to 0 since real part would be 0.
 F_it(alpha2 < 0) = 0;
-% 
+
 %% Write out the fort.13 file
 filename = ['fort.13.' type '_C' num2str(C_it) '_' crit];
 fid = fopen(filename,'w');
@@ -151,13 +135,17 @@ fprintf(fid,'%f \n',0.0) ;
 fprintf(fid,'%s \n','internal_tide_friction') ;
 % 
 % Clipping F_it for small and large e-folding times, and small depths
-%F_it(F_it > MaxIT) = MaxIT;
-if strcmp(type,'scalar')
-    F_it(F_it < MinIT) = 0;
-elseif strcmp(type,'tensor')
-    F_it(F_it.*H2_mesh < MinIT) = 0;
-end
-%F_it(B < MinDepth) = 0;
+% MaxIT = 1/(MinFoldingTime*3600);
+% MinIT = 1/(MaxFoldingTime*24*3600);
+% 
+% if strcmp(type,'scalar')
+%     F_it(F_it < MinIT) = 0;
+%     F_it(F_it > MaxIT) = MaxIT;
+% elseif strcmp(type,'directional')
+%     F_it(F_it.*H2_mesh < MinIT) = 0;
+%     F_it(F_it.*H2_mesh > MaxIT) = MaxIT;
+% end
+F_it(B < MinDepth) = 0;
 %
 % Number of nodes not default (0.0)
 ne = length(find(F_it > 0));
@@ -165,7 +153,13 @@ fprintf(fid,'%d \n',ne) ;
 % Print out list of nodes for each
 for k = 1:length(F_it)
     if F_it(k) > 0
-        fprintf(fid,'%d \t %12.9f \n',k,F_it(k));
+        if strcmp(type,'tensor')
+            % Need F_it along with Jx and Jy
+            fprintf(fid,'%d \t %15.9e %15.9e %15.9e \n',k,F_it(k),Jx(k),Jy(k));
+        else
+            % Only need the F_it component
+            fprintf(fid,'%d \t %15.9e \n',k,F_it(k));
+        end
     end
 end
 fclose(fid);
