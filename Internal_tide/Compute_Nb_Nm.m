@@ -6,7 +6,7 @@ function [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,N,lon_N,lat_N,proj)
 %
 % [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,N,lon_N,lat_N,lon0,lat0)
 % Input : lon_M    - longitude points of nodes in mesh
-%         lon_M    - latitude points of nodes in mesh
+%         lat_M    - latitude points of nodes in mesh
 %         B        - depths of nodes in mesh
 %         zcontour - the contours where we have values of N
 %         N        - cell of buoyancy freq. scatter points for each contour
@@ -25,7 +25,16 @@ function [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,N,lon_N,lat_N,proj)
 Min_length = 30;
 
 % Projection set
-m_proj(proj,'lon',[ min(lon_M) max(lon_M)],'lat',[ max(lat_M) max(lat_M)])
+% Getting minima and maxima
+loncmin = cellfun(@min, lon_N,'UniformOutput',0);
+loncmax = cellfun(@max, lon_N,'UniformOutput',0);
+latcmin = cellfun(@min, lat_N,'UniformOutput',0);
+latcmax = cellfun(@max, lat_N,'UniformOutput',0);
+lon_min = min(min(lon_M),min([loncmin{:}]));
+lon_max = max(max(lon_M),max([loncmax{:}]));
+lat_min = min(min(lat_M),min([latcmin{:}]));
+lat_max = max(max(lat_M),max([latcmax{:}]));
+m_proj(proj,'lon',[ lon_min lon_max],'lat',[ lat_min lat_max])
 
 % Conversion to projection coordinates
 [xx,yy] = m_ll2xy(lon_M,lat_M);        
