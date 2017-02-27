@@ -57,7 +57,7 @@ N_filename = 'E:\Global_Data\WOD_CTD_Casts\Indian_Ocean_N_100m_processed.mat';
 
 % save info filename
 S_filename = 'fort14_it_info_D2G.mat';
-%%
+
 %%%%%%%%%%Calculation region (should not need to alter below)%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -75,13 +75,13 @@ else
     f = psi*sind(VX(:,2));
     
     m_proj(proj,'lon',[ min(VX(:,1)) max(VX(:,1))],...
-                'lat',[ max(VX(:,2)) max(VX(:,2))])
+                'lat',[ min(VX(:,2)) max(VX(:,2))])
     [xx,yy] = m_ll2xy(VX(:,1),VX(:,2));             
-
+ 
     % Calculate slope directly on ADCIRC mesh
     [Hx,Hy] = ADCIRC_Bath_Slope( EToV,R*xx,R*yy, B );
     H2_mesh = Hx.^2 + Hy.^2;
-    %
+    
     %% Load the constant contours of N values and compute Nb and Nmean
     load(N_filename); 
     %
@@ -92,10 +92,12 @@ else
         % Compute gradients of J from Nb, Nm and bathymetry B, and grid
         [J,dJ] = Compute_J_Nycander(EToV,VX,B,Nm,omega,...
                                     1.455,2,MinDepth,proj,4);
-    end
-                        
-    % save info for future computations 
-    save(S_filename,'Nb','Nm','Hx','Hy','f','B','J','Jx','Jy');                  
+        % save info for future computations 
+        save(S_filename,'VX','EToV','Nb','Nm','Hx','Hy','f','B','J','dJ');                    
+    else
+        % save info for future computations 
+        save(S_filename,'VX','EToV','Nb','Nm','Hx','Hy','f','B'); 
+    end          
 end
 
 %% Calculate F_it from Nb, Nm, Jx, Jy, and H2_mesh or as reqd.
@@ -156,7 +158,8 @@ for k = 1:length(F_it)
     if F_it(k) > 0
         if strcmp(type,'tensor')
             % Need F_it along with Jx and Jy
-            fprintf(fid,'%d \t %15.9e %15.9e %15.9e \n',k,F_it(k),Jx(k),Jy(k));
+            fprintf(fid,'%d \t %15.9e %15.9e %15.9e \n',...
+                    k,F_it(k),dJ(k,1),dJ(k,2));
         else
             % Only need the F_it component
             fprintf(fid,'%d \t %15.9e \n',k,F_it(k));
