@@ -4,14 +4,14 @@
 %               and bathymetry data to compute internal tide      %
 %               friction coefficients on unstructured mesh        %
 %  Inputs:      1) .mat files of N values at constant contours    %
-%               2) Unstructured grid nodes                        %                           
+%               2) Unstructured grid mesh with bathymetry         %                           
 %  Outputs:     A fort.13 formatted file for use in ADCIRC/SMS    %
 %  Project:     Indian Ocean and Marginal Seas                    %
 %  Author:      William Pringle                                   %
 %  Created:     Oct 5 2016                                        %
 %  Updated:     Oct 24 2016, Dec 14 2016, Feb 25 2017             %
-%  Requires:    function - readfort14, Compute_Nb_Nm,             %
-%               ADCIRC_Bath_Slope,                                %
+%  Requires:    functions - readfort14, Compute_Nb_Nm, m_proj,    %
+%               m_ll2xy, ADCIRC_Bath_Slope, Compute_J_Nycander    %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 clearvars; 
@@ -90,7 +90,8 @@ else
     
     if strcmp(type,'tensor')
         % Compute gradients of J from Nb, Nm and bathymetry B, and grid
-        [J,Jx,Jy] = Compute_J_Nycander(EToV,VX,B,Nb,Nm,proj);
+        [J,dJ] = Compute_J_Nycander(EToV,VX,B,Nm,omega,...
+                                    1.455,2,MinDepth,proj,4);
     end
                         
     % save info for future computations 
