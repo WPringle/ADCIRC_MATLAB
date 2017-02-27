@@ -42,6 +42,7 @@ ElemCon = [ [1:1:NE]' linspace(3,3,NE)' EToV] ;
 fprintf(fid, '%d %d %d %d %d \n', ElemCon' ) ; 
 
 % Open boundary
+if ~isempty(opedat)
 fprintf(fid, '%d %s \n', opedat.nope, '= Number of open boundaries' ) ; 
 fprintf(fid, '%d %s \n', opedat.neta, '= Total number of open boundary nodes' ) ; 
 
@@ -51,8 +52,11 @@ for i = 1: opedat.nope
        
    fprintf( fid, '%d \n', nonzeros(opedat.nbdv(:,i)) ) ; 
 end
+end
+
 
 % Land boundary
+if ~isempty(boudat)
 fprintf(fid, '%d %s \n', boudat.nbou, '= Number of land boundaries' ) ; 
 fprintf(fid, '%d %s \n', boudat.nvel, '= Total number of land boundary nodes' ) ; 
 
@@ -104,8 +108,8 @@ for i = 1: boudat.nbou
         %    msgline = fgetl(fid) ;
     end
 end
+end
 % toc
-
 
 fclose(fid) ;
 
