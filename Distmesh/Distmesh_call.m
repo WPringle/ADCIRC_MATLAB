@@ -19,9 +19,9 @@ mapfile = 'IDIOMS_v7_split.map';
 bathyfile = ['E:\Global_Data\SRTM30_PLUS_w_Abyssal_Hills\' ...
             'bathy_SSG_1_120_GLOBAL_landmask.nc'];
 edgelength = 1/120;    % min edgelength in degrees
-dist_param = 0.1;      % Distance paramater (percent that the edgelength 
+dist_param = 0.075;    % Distance paramater (percent that the edgelength 
                        % should change with distance, set zero to ignore)
-wl_param = 240;        % parameter in wavelength function (set zero to ignore)
+wl_param = 600;        % parameter in wavelength function (set zero to ignore)
 slope_param = 30;      % parameter in slope function (set zero to ignore)
 itmax       = 1000;    % Maximum number of iterations allowed in distmesh
 plot_on = 1;           % Plot? (Yes = 1, No = 0)
@@ -79,9 +79,9 @@ for split = 1:26
     disp(['finished split no.' num2str(split)])
     %% Save outputs to .mat file
     %writefort14( outfiname, t, p, zeros(length(p),1), opedat , boudat,title)
-%     if ~isempty(p)
-%         save([outfiname '_' num2str(split) '.mat'],'p','t');
-%     end
+    if ~isempty(p)
+        save([outfiname '_' num2str(split) '.mat'],'p','t');
+    end
 end
 %% Close parallel pool
 poolobj = gcp('nocreate');

@@ -1,4 +1,4 @@
-function [p,t]=distmesh2d(fd,fh,fci,h0,bbox,p,pfix,itmax,plot_on)
+function [p,t]=distmesh2d(fd,fh,h0,bbox,p,pfix,itmax,plot_on)
 %DISTMESH2D 2-D Mesh Generator using Distance Functions.
 %   [P,T]=DISTMESH2D(FD,FH,H0,BBOX,PFIX,plot_on)
 %
@@ -72,7 +72,7 @@ dptol=.0008; ttol=.1; Fscale=1.2;
 deltat = 0.08 ;
 % deltat=.01 ;
 geps=.001*h0; deps=sqrt(eps)*h0;
-densityctrlfreq=30; interiorangfreq = 50;
+densityctrlfreq=30;
 
 if isempty(p)
     %% 1. Create initial distribution in bounding box (equilateral triangles)
@@ -83,7 +83,8 @@ if isempty(p)
     %% 2. Remove points outside the region, apply the rejection method
     p=p(feval(fd,p,0)<geps,:);                      % Keep only d<0 points
     r0=1./feval(fh,p).^2;                           % Probability to keep point
-    p=p(rand(size(p,1),1)<r0./max(r0),:);           % Rejection method
+    max_r0 = 1/h0^2;    %max_r0 = max(r0);
+    p=p(rand(size(p,1),1) < r0/max_r0,:);           % Rejection method
 end
 if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end     % Remove duplicated nodes
 pfix=unique(pfix,'rows'); nfix=size(pfix,1);
@@ -92,7 +93,7 @@ p=[pfix; p];                                         % Prepend fix points
 N=size(p,1);                                         % Number of points N
 
 %% Iterate
-count=0;
+count=0; prcq_o = 0;
 pold=inf;                                            % For first iteration
 if plot_on == 1
     clf,view(2),axis equal,axis off
@@ -120,35 +121,32 @@ while 1
     if plot_on == 1
         cla,patch('vertices',p,'faces',t,'edgecol','k','facecol',[.8,.9,1]);
         drawnow
+        if ~isempty(pfix)
+            hold on
+            movable = setdiff(p,pfix,'rows');
+            plot(movable(:,1),movable(:,2),'o');
+            hold off
+        end
     end
     %
   end
   
   % Getting element quality and check goodness
   tq = gettrimeshquan( p, t);
-  if (length(find(tq.qm > 0.6))/length(t) > 0.9995)
+  prcq = length(find(tq.qm > 0.6))/length(t);
+  if it > itmax/4 && (prcq > 0.999 || (mod(it,50) == 0 && prcq <= prcq_o))
+%       if any(tq.vang > 130/180*pi)
+%           p(t(tq.vang > 130/180*pi),:) = [];
+%           N=size(p,1); pold=inf;
+%           continue;
+%       end  
+      endflag = remove_small_connectivity;
+      if endflag == 0; continue; end 
       disp('quality of mesh is good enough, exit')
       break;
   end
-  
-  % Interior angle control, adding points
-  if count ~= 1 && mod(count,densityctrlfreq) == 1
-      % Only add points at triangle midpoint if interior angle is less than 30
-      if any(tq.vang < 30/180*pi)
-          [I,~] = find(tq.vang < 30/180*pi);
-          unq = unique(I);
-          a = [unq histc(I,unq)];
-          % Only add points where one angle is small and others are not
-          if any(a(:,2) == 1)
-              pmid=(p(t(:,1),:)+p(t(:,2),:)+p(t(:,3),:))/3; 
-              p = [p; pmid(a(a(:,2) == 1,1),:)];
-              % Changing the edge function interpolant so the new points 
-              % are not just deleted later on
-              fci(pmid(a(a(:,2) == 1,1),:));
-              N=size(p,1); pold=inf;
-              continue;
-          end
-      end    
+  if mod(it,50) == 0
+    prcq_o = prcq;
   end
   
   % 6. Move mesh points based on bar lengths L and forces F
@@ -158,10 +156,12 @@ while 1
   L0=hbars*Fscale*sqrt(sum(L.^2)/sum(hbars.^2));     % L0 = Desired lengths
   
   % Density control - remove points that are too close
-  if mod(count,densityctrlfreq)==0 && any(L0>2*L)
-      p(setdiff(reshape(bars(L0>2*L,:),[],1),1:nfix),:)=[];
-      N=size(p,1); pold=inf;
-      continue;
+  if mod(count,densityctrlfreq)==0   
+      if any(L0>2*L)
+        p(setdiff(reshape(bars(L0>2*L,:),[],1),1:nfix),:)=[];
+        N=size(p,1); pold=inf;
+        continue;
+      end
   end
   
   F=max(L0-L,0);                                     % Bar forces (scalars)
@@ -180,11 +180,15 @@ while 1
   % 8. Termination criterion: All interior nodes move less than dptol (scaled)
   it = it + 1 ;
   if ( it > itmax )
-       disp('too many iterations, exit')
-       break ; 
+      endflag = remove_small_connectivity;
+      if endflag == 0; continue; end 
+      disp('too many iterations, exit')
+      break ; 
   end
    
   if ( max(sqrt(sum(deltat*Ftot(d<-geps,:).^2,2))/h0) < dptol )
+      endflag = remove_small_connectivity;
+      if endflag == 0; continue; end 
       disp('no movement of nodes, exit')
       break; 
   end
@@ -204,7 +208,42 @@ iflatel = find( JJ < 20*eps ) ;
 
 inonflatel = setdiff(1:length(JJ),iflatel) ; 
 t = t(inonflatel,:) ;
+
+% WP Fix bad interior angle elements
+[ vtov, nnv, ~, ~, ~ ] = NodeConnect2D( t );
+tq = gettrimeshquan( p, t);
+[I,~] = find(tq.vang < 30*pi/180 | tq.vang > 130*pi/180);
+%       
+for i = I'
+    % Get the node belonging to largest angle
+    [ang,j] = max(tq.vang(i,:));
+    if ang < pi*90/180
+        % Get node belonging to smallest angle
+        [~,j] = min(tq.vang(i,:));
+    end
+    node = t(i,j) ;
+    % Move this node to center of surrounding nodes
+    center = mean(p(vtov(1:nnv(node),node),:));
+    p(node,:) = center;
+end
 %
 if plot_on == 1
     simpplot(p,t)
+end
+
+function endflag = remove_small_connectivity
+    % Get node connectivity (look for 4)
+    [ ~, ~, ~, nn, ~ ] = NodeConnect2D( t );
+    % Make sure they are not boundary nodes
+    d=feval(fd,p,0);
+    if isempty(find(nn' == 4 & d < -h0,1))
+        endflag = 1;
+    else
+        endflag = 0;
+        p(nn' == 4 & d < -h0,:) = [];
+        N=size(p,1); pold=inf;
+    end
+    return;
+end
+
 end

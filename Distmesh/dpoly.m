@@ -11,49 +11,54 @@ function [d,iloc]=dpoly(p,pv,ps)
 % iloc is the indice in polygon for closest point from p
 
 np=size(p,1) ;
-%nvs=size(pv,1)-1;
-nvs=size(ps,1)-1;
+if ~isempty(ps)
+    %nvs=size(pv,1)-1;
+    nvs=size(ps,1)-1;
+    memneed = np*nvs*8/10^9  ; % assume real number  
+    if isempty(gcp('nocreate'))
+        %disp('dsegment serial')
+        maxmem = 4; % 4 Gb
+        if ( memneed < maxmem ) % 8 Gb
+           %ds=dsegment(p,pv) ;
+           ds=dsegment(p,ps) ;
+           [d,~]=min(ds,[],2);
+        else
+           csz = ceil(maxmem*10^9/(8*nvs)) ;
 
-memneed = np*nvs*8/10^9  ; % assume real number  
-if isempty(gcp('nocreate'))
-    %disp('dsegment serial')
-    maxmem = 4; % 4 Gb
-    if ( memneed < maxmem ) % 8 Gb
-       %ds=dsegment(p,pv) ;
-       ds=dsegment(p,ps) ;
-       [d,~]=min(ds,[],2);
+           ires = mod( np, csz) ;
+           if ( ires )
+               ichunck = [0:csz:np np] ;
+           else
+               ichunck = [0:csz:np] ; 
+           end
+
+           d = zeros(np,1) ;
+           iloc = zeros(np,1) ; 
+           nch = length(ichunck) ;
+           for ic = 1: nch - 1
+               % ic
+               ibeg = ichunck(ic) + 1 ;
+               iend = ichunck(ic+1)   ;
+
+               pp = p(ibeg:iend,:) ; 
+
+               %dsc = dsegment(pp,pv) ;
+               dsc = dsegment(pp,ps) ;
+               [d(ibeg:iend),iloc(ibeg:iend)] = min( dsc, [], 2) ;  
+           end
+        end
     else
-       csz = ceil(maxmem*10^9/(8*nvs)) ;
-
-       ires = mod( np, csz) ;
-       if ( ires )
-           ichunck = [0:csz:np np] ;
-       else
-           ichunck = [0:csz:np] ; 
-       end
-
-       d = zeros(np,1) ;
-       iloc = zeros(np,1) ; 
-       nch = length(ichunck) ;
-       for ic = 1: nch - 1
-           % ic
-           ibeg = ichunck(ic) + 1 ;
-           iend = ichunck(ic+1)   ;
-
-           pp = p(ibeg:iend,:) ; 
-
-           %dsc = dsegment(pp,pv) ;
-           dsc = dsegment(pp,ps) ;
-           [d(ibeg:iend),iloc(ibeg:iend)] = min( dsc, [], 2) ;  
-       end
+        %disp('dsegment parallel')
+        d = zeros(length(p),1); iloc = zeros(length(p),1);
+        parfor ii = 1:np
+            ds              = dsegment(p(ii,:),ps);
+           [d(ii),iloc(ii)] = min(ds);
+        end
     end
 else
-    %disp('dsegment parallel')
-    d = zeros(length(p),1); iloc = zeros(length(p),1);
-    parfor ii = 1:np
-        ds              = dsegment(p(ii,:),ps);
-       [d(ii),iloc(ii)] = min(ds);
-    end
+    % make distance very large as must be very far from any boundaries
+    iloc = zeros(length(p),1);
+    d = 1d8*ones(length(p),1);
 end
 
 if isempty(gcp('nocreate'))
