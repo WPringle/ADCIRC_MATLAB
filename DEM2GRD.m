@@ -34,6 +34,7 @@ function GRID_Z = DEM2GRD(DEM_X,DEM_Y,DEM_Z,GRID_X,GRID_Y,GRID_E,varargin)
 %	Created: 2016-08-23
 %   Updated: 2017-02-14, DELTA_M algorithm improved without searching reqd, 
 %                        correction of CA averaging at end.
+%   Updated: 2017-03-05, fixed CA formula, needed a sqrt.
 %
 %   References:
 %              V. Bilskie, S.C. Hagen (2013). "Topographic Accuracy 
@@ -75,7 +76,7 @@ end
 DELTA_M = DELTA_M(K)./COUNT(K);
 
 %% Calculate CA - number of DEM grids to average - for each node
-N   = 0.25*DELTA_M/DELTA_DEM; 
+N   = 0.25*sqrt(DELTA_M/DELTA_DEM); 
 CA  = zeros(nn,1);
 CA( N < 1)  = 1;
 CA( N >= 1) = int64((2*N(N >= 1) + 1).^2);
@@ -102,6 +103,10 @@ disp('doing spline interpolation where CA = 1')
 F = griddedInterpolant(DEM_X,DEM_Y,DEM_Z,'spline');
 GRID_Z(CA == 1) = F(GRID_X(K(CA == 1)),GRID_Y(K(CA == 1)));
 
+% Return if not CA is larger than 1
+if isempty(CA(CA>1))
+    return;
+end
 % For cell-averaging searches where CA > 1   
 % Reshape for kD-tree
 DEM_s  = size(DEM_X); 
