@@ -1,8 +1,17 @@
-% Read kml file created in google maps to get new coordinates of stations 
-% (we move the stations to reasonable locations off land etc in google maps
-% before exporting to kml). 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Read kml file created in google maps to get coordinates of stations 
+% (we can move the stations to reasonable locations off land etc in google
+% maps before exporting to kml). 
+%
 % Automatically finds the boundary of your grid and selects only those
-% ones. 
+% ones that lie within the grid to output to the .csv for copying into
+% fort.15 
+%
+% Requires: kml2struct.m found at https://www.mathworks.com/matlabcentral/
+%                                         fileexchange/35642-kml2struct
+%           extdom_edges.m, extdom_polygon.m found in Distmesh folder
+%           readfort14.m
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clearvars; clc;
 
 %% Reading the kml
