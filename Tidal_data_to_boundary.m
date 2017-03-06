@@ -2,24 +2,27 @@
 % Extract the boundary data from the fort.14, interpolate a tidal        %
 % database onto the boundary, output in fort.15 form                     %
 %                                                                        %
-% Requires: readfort14.m                                                 %
+% Requires: readfort14.m, m_map for projection                           %
 %                                                                        %
 % Created by William Pringle Oct 20 2016 only for TPXO8 database         %
-% Updated by William pringle Oct 27 2016 for FES2014 database also       % 
+% Updated by William pringle Oct 27 2016 for FES2014 database also       %
+% "              "           March 6 2017 for arbitrary projection       % 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 clearvars; close all; clc; 
 %% Parameters to set
-% CPP conversion coefficents (centre of projection and projection radius)
-lon0 = 75.214667 * pi/180; lat0 = -31.172085 * pi/180;
-R = 6378206.4; % earth radius
+% Select desired projection (using m_map)
+proj = 'Mercator';
               
 % Specify limits of grid
-lat_min = -75; lat_max = 14;
-lon_min = 20;  lon_max = 133;
+lat_min = -75; lat_max = 12;
+lon_min = 18;  lon_max = 135;
+
+m_proj(proj,'lon',[ lon_min lon_max],...
+            'lat',[ lat_min lat_max])
 
 % Constituents that we want in the order that we want
-const = {'m2','s2','k1','o1','n2','k2','p1','q1'};
+const = {'m2','s2','k1','o1','n2','k2','p1','q1','m4'};
 
 % Specify tidal database (choose TPXO8 or FES2014) and 
 % directory files are in
@@ -33,7 +36,7 @@ database_direc = 'E:\Global_Data\TPXO8_TIDES\';
 %database_direc = 'E:\Global_Data\AVISO_TIDES\FES2014\';
 
 % input fort.14 name
-fort14    = '../IDIOMS_v5.18.grd';
+fort14    = '../IDIOMS_v7.1_SSG+TPXAnt_D2G.grd';
 % output fort.15 name
 fort15    = 'fort.15.TPXOb';
 %-------------------------------------------------------------------------
@@ -42,7 +45,7 @@ fort15    = 'fort.15.TPXOb';
 %% Evaluate tidal database file names
 if strcmp(database,'tpxo8')
     tide_grid     = [database_direc 'grid_tpxo8atlas_30_v1.nc'];
-    tide_prefix   = [database_direc 'hf.'];
+    tide_prefix   = [database_direc 'ELE\hf.'];
     tide_suffix   = '_tpxo8_atlas_30c_v1.nc';
 elseif strcmp(database,'FES2014')
     tide_grid     = [database_direc 'M2_FES2014b_elev.nc'];
@@ -65,10 +68,8 @@ for n = 1:opedat.nope
     ns = ne + 1;
 end
 
-% Do the CPP conversion
-b_lonr = b_lon * pi/180;  b_latr = b_lat * pi/180; 
-b_x = R * (b_lonr - lon0) * cos(lat0);
-b_y = R * b_latr;
+% Do projection
+[b_x,b_y] = m_ll2xy(b_lon,b_lat);             
 
 %% Load tide data and make vectors
 %ncdisp(tide_grid);
@@ -107,10 +108,8 @@ Kd = unique(Kd);
 % The new lon and lat vectors of data
 lon_x = lon_x(Kd); lat_y = lat_y(Kd);
 
-% Do the CPP conversion
-lon_x = lon_x * pi/180;  lat_y = lat_y * pi/180; 
-x = R * (lon_x - lon0) * cos(lat0);
-y = R * lat_y;
+% Do the projection
+[x,y] = m_ll2xy(lon_x,lat_y);        
 
 %% Now interpolate into grid and write out to fort.15 type file
 

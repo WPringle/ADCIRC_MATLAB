@@ -37,12 +37,12 @@ lon0 = ll0*pi/180 ; lat0 = lonlat0(2)*pi/180 ;
 R = 6378206.4; % earth radius
               
 % Constituents that we want in the order that we want
-const = {'M2','S2','K1','O1','N2','K2','P1','Q1'};
+const = {'M2','S2','K1','O1','N2','K2','P1','Q1','M4'};
 frequency = [0.000140518902509,0.000145444104333,0.000072921158358,...
              0.000067597744151,0.000137879699487,0.000145842317201,...
-             0.000072522945975,0.000064958541129];
+             0.000072522945975,0.000064958541129,0.000281037805018];
 alpha = {'M2 SAL','S2 SAL','K1 SAL','O1 SAL',...
-         'N2 SAL','K2 SAL','P1 SAL','Q1 SAL'};
+         'N2 SAL','K2 SAL','P1 SAL','Q1 SAL','M4 SAL'};
 
 
 ntip = length(f15tipname) ;
