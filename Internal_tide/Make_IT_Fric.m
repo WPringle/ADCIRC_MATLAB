@@ -50,13 +50,17 @@ C_it = 1.5;
 MinDepth       = 100; % m 
 
 % ADCIRC mesh filame (fort.14)
-adcirc_filename = '../IDIOMS_v6.3_SSG_D2G.grd';
+adcirc_filename = '../IDIOMS_v7.1_SSG+TPXAnt_D2G.grd';
 
 % n data filename (only .mat file atm)
 N_filename = 'E:\Global_Data\WOD_CTD_Casts\Indian_Ocean_N_100m_processed.mat';
 
+% original bathymetry filename if wanted for J calc
+bathyfile = ['E:\Global_Data\SRTM30_PLUS_w_Abyssal_Hills\' ...
+             'bathy_SSG_1_120_GLOBAL_landmask.nc'];
+
 % save info filename
-S_filename = 'fort14_it_info_D2G.mat';
+S_filename = 'fort14_it_info_SSG+TPXAnt.mat';
 
 %%%%%%%%%%Calculation region (should not need to alter below)%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -77,10 +81,6 @@ else
     m_proj(proj,'lon',[ min(VX(:,1)) max(VX(:,1))],...
                 'lat',[ min(VX(:,2)) max(VX(:,2))])
     [xx,yy] = m_ll2xy(VX(:,1),VX(:,2));             
- 
-    % Calculate slope directly on ADCIRC mesh
-    [Hx,Hy] = ADCIRC_Bath_Slope( EToV,R*xx,R*yy, B );
-    H2_mesh = Hx.^2 + Hy.^2;
     
     %% Load the constant contours of N values and compute Nb and Nmean
     load(N_filename); 
@@ -88,13 +88,20 @@ else
     [Nb,Nm] = Compute_Nb_Nm(VX(:,1),VX(:,2),B,zcontour,...
                             N,lon,lat,proj);
     
+%    load(S_filename);
+                        
+    %% Getting the J stuff if required (tensor type)
     if strcmp(type,'tensor')
         % Compute gradients of J from Nb, Nm and bathymetry B, and grid
-        [J,dJ] = Compute_J_Nycander(EToV,VX,B,Nm,omega,...
-                                    1.455,2,MinDepth,proj,4);
+        [J,dJ,dh] = Compute_J_Nycander(EToV,VX,B,Nm,omega,...
+                                       5,MinDepth,proj,bathyfile,4);
+        H2_mesh = dh(:,1).^2 + dh(:,2).^2;                          
         % save info for future computations 
-        save(S_filename,'VX','EToV','Nb','Nm','Hx','Hy','f','B','J','dJ');                    
+        save(S_filename,'VX','EToV','Nb','Nm','dh','f','B','J','dJ');                    
     else
+         % Calculate slope directly on ADCIRC mesh
+        [Hx,Hy] = ADCIRC_Bath_Slope( EToV,R*xx,R*yy, B );
+        H2_mesh = Hx.^2 + Hy.^2;
         % save info for future computations 
         save(S_filename,'VX','EToV','Nb','Nm','Hx','Hy','f','B'); 
     end          
@@ -105,7 +112,7 @@ if strcmp(type,'scalar')
    F_it = C_it * sqrt((Nb.^2 - omega^2).*(Nm.^2 - omega^2)).*H2_mesh/omega;
 elseif strcmp(type,'directional')
    F_it = C_it * sqrt((Nb.^2 - omega^2).*(Nm.^2 - omega^2))/omega;
-elseif strcmp(type,'tensor')
+elseif strcmp(type,'tensor') || strcmp(type,'tensor_to_scalar')
    F_it = Nb/(4*pi)*sqrt(1-f.^2/omega^2);
 end
 F_it = real(F_it); % in case becomes complex due to minus square root
@@ -123,20 +130,7 @@ F_it = F_it./gamma2;
 % Make sure that if alpha2 < 0 that F_it is 
 % set equal to 0 since real part would be 0.
 F_it(alpha2 < 0) = 0;
-
-%% Write out the fort.13 file
-filename = ['fort.13.' type '_C' num2str(C_it) '_' crit];
-fid = fopen(filename,'w');
-% Print header
-fprintf(fid,'%s \n','Spatial attributes description') ;
-fprintf(fid,'%d \n',length(F_it)) ;   
-fprintf(fid,'%d \n',1) ;  
-fprintf(fid,'%s \n','internal_tide_friction') ;
-fprintf(fid,'%s \n','1/time') ;
-fprintf(fid,'%d \n',1) ;  
-fprintf(fid,'%f \n',0.0) ;  
-fprintf(fid,'%s \n','internal_tide_friction') ;
-% 
+%
 % Clipping F_it for small and large e-folding times, and small depths
 % MaxIT = 1/(MinFoldingTime*3600);
 % MinIT = 1/(MaxFoldingTime*24*3600);
@@ -150,6 +144,30 @@ fprintf(fid,'%s \n','internal_tide_friction') ;
 % end
 F_it(B < MinDepth) = 0;
 %
+if strcmp(type,'tensor_to_scalar')
+   % Get the scalar value in terms of the directions of the tidal ellipse
+   F_it = F_it.*(dJ(:,1).*dh(:,1) + dJ(:,2).*dh(:,2));
+   L = length(find(F_it < 0));
+   F_it(F_it < 0) = 0;
+end
+%
+%% Write out the fort.13 file
+if strcmp(type,'tensor') || strcmp(type,'tensor_to_scalar')
+    filename = ['fort.13.' type '_' crit];
+else
+    filename = ['fort.13.' type '_C' num2str(C_it) '_' crit];
+end
+fid = fopen(filename,'w');
+% Print header
+fprintf(fid,'%s \n','Spatial attributes description') ;
+fprintf(fid,'%d \n',length(F_it)) ;   
+fprintf(fid,'%d \n',1) ;  
+fprintf(fid,'%s \n','internal_tide_friction') ;
+fprintf(fid,'%s \n','1/time') ;
+fprintf(fid,'%d \n',1) ;  
+fprintf(fid,'%f \n',0.0) ;  
+fprintf(fid,'%s \n','internal_tide_friction') ;
+%
 % Number of nodes not default (0.0)
 ne = length(find(F_it > 0));
 fprintf(fid,'%d \n',ne) ; 
@@ -157,9 +175,12 @@ fprintf(fid,'%d \n',ne) ;
 for k = 1:length(F_it)
     if F_it(k) > 0
         if strcmp(type,'tensor')
-            % Need F_it along with Jx and Jy
+            % Output the C_11, C_12 = C_21, C_22 for the tensor
+            C_11 = 2*F_it(k)*dJ(k,1)*dh(k,1);
+            C_22 = 2*F_it(k)*dJ(k,2)*dh(k,2);
+            C_21 = F_it(k)*(dJ(k,1)*dh(k,2) + dJ(k,2)*dh(k,1));
             fprintf(fid,'%d \t %15.9e %15.9e %15.9e \n',...
-                    k,F_it(k),dJ(k,1),dJ(k,2));
+                    k,C_11,C_22,C_21);
         else
             % Only need the F_it component
             fprintf(fid,'%d \t %15.9e \n',k,F_it(k));
