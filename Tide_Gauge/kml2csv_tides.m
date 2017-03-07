@@ -7,8 +7,8 @@
 % ones that lie within the grid to output to the .csv for copying into
 % fort.15 
 %
-% Requires: kml2struct.m found at https://www.mathworks.com/matlabcentral/
-%                                         fileexchange/35642-kml2struct
+% Requires: kml2struct.m (has been altered by WP compared to original one
+%           found at mathworks)
 %           extdom_edges.m, extdom_polygon.m found in Distmesh folder
 %           readfort14.m
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
