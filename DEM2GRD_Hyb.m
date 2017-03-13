@@ -1,4 +1,4 @@
-function GRID_Z = DEM2GRD(DEM_X,DEM_Y,DEM_Z,GRID_X,GRID_Y,GRID_E,varargin)
+function GRID_Z = DEM2GRD_Hyb(DEM_X,DEM_Y,DEM_Z,GRID_X,GRID_Y,GRID_E,varargin)
 % DEM2GRD: Uses the cell-averaged approach to interpolate the nodes
 %          on the unstructured grid to the DEM. Ensure that inputs
 %          are in projected coordinates (e.g. in metres)
@@ -59,8 +59,8 @@ else
 end
 
 %% Get grid area of DEM
-Dx = abs(diff(DEM_X)); Dy = abs(diff(DEM_Y));
-DELTA_DEM = min(Dx(Dx > 0)) * min(Dy(Dy > 0));
+DELTA_DEM = (DEM_X(2,1) - DEM_X(1,1)) ...
+          * (DEM_Y(1,2) - DEM_Y(1,1));
       
 %% Get average area of each node
 % First obtain element areas
@@ -82,21 +82,43 @@ CA( N < 1)  = 1;
 CA( N >= 1) = int64((2*N(N >= 1) + 1).^2);
 %% Delete uncessary parts of DEM
 BufferL = sqrt(max(CA)*DELTA_DEM); % buffer of size sqrt(max(CA)*DELTA_DEM)
-I = find(DEM_X >= min(GRID_X(K)) - BufferL & ...
-         DEM_X <= max(GRID_X(K)) + BufferL & ...
-         DEM_Y >= min(GRID_Y(K)) - BufferL & ...
-         DEM_Y <= max(GRID_Y(K)) + BufferL);
+I = find(DEM_X(:,1) >= min(GRID_X(K)) - BufferL & ...
+         DEM_X(:,1) <= max(GRID_X(K)) + BufferL);
+J = find(DEM_Y(1,:) >= min(GRID_Y(K)) - BufferL & ...
+         DEM_Y(1,:) <= max(GRID_Y(K)) + BufferL);
 % Delete uncessary parts of DEM first step
-DEM_X = DEM_X(I); DEM_Y = DEM_Y(I); DEM_Z = DEM_Z(I);  
+DEM_X = DEM_X(I,J); DEM_Y = DEM_Y(I,J); DEM_Z = DEM_Z(I,J);  
+% % Get rid of unecessary parts of DEM second step
+% CVH = convhull(GRID_X(K),GRID_Y(K)); % Get the convex hull
+% % Make buffer of size sqrt(max(CA)*DELTA_DEM)
+% [xb, yb] = bufferm2('xy',GRID_X(K(CVH)),GRID_Y(K(CVH)),double(BufferL),'out');
+% I = find(InPolygon(DEM_X,DEM_Y,xb,yb) == 0);  % Check for DEM values outside convex hull with buffer
+% DEM_X(I) = []; DEM_Y(I) = []; DEM_Z(I) = []; % Delete unecessary part of DEM
 
 %% Get cell average for each node by averaging CA surrounding values in DEM
 GRID_Z = zeros(nn,1); 
+% Get gridded interpolant where CA == 1
+% For only the gridded Interpolant interpolation
+disp('doing spline interpolation where CA = 1')
+F = griddedInterpolant(DEM_X,DEM_Y,DEM_Z,'spline');
+GRID_Z(CA == 1) = F(GRID_X(K(CA == 1)),GRID_Y(K(CA == 1)));
+
+% Return if not CA is larger than 1
+if isempty(CA(CA>1))
+    return;
+end
+% For cell-averaging searches where CA > 1   
+% Reshape for kD-tree
+DEM_s  = size(DEM_X); 
+DEM_X = reshape(DEM_X,DEM_s(2)*DEM_s(1),1); 
+DEM_Y = reshape(DEM_Y,DEM_s(2)*DEM_s(1),1);
+DEM_Z = reshape(DEM_Z,DEM_s(2)*DEM_s(1),1);
 
 % set up searching algorithm
 disp('setting up knnsearcher for CA > 1')
 Mkd = KDTreeSearcher([DEM_X DEM_Y],...
-                      'BucketSize',ceil(100^(2/3)*median(CA)^(1/3)));
-CA_un = unique(CA,'sorted');
+                      'BucketSize',ceil(100^(2/3)*median(CA(CA>1))^(1/3)));
+CA_un = unique(CA,'sorted'); CA_un(1) = [];
 disp('doing the search for each value of CA')
 for k = CA_un'
     % Use kd-tree
