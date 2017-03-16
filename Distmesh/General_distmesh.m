@@ -35,74 +35,53 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     %% Read the map
     [~, ~, polygon] = Read_SMS_Map( mapfile, plot_on, poly_num );
     
-    %% Make new polygons based on the splitted mesh
-    if ~isempty(fixp) && ~isempty(ini_p)
-        % Number of individual outer polygons is equal to length I
-        I = find(isnan(fixp(:,1)));
-        fixp_e = fixp(1,:);
-        for ii = 1:length(I)
-           fixp_e = [fixp_e;fixp(I(ii)-1,:);fixp(min(I(ii)+1,end-1),:)];
-        end
-        fixp_e = unique(fixp_e,'rows','stable');
-        idx = knnsearch(polygon.outer,fixp_e);
-        ide = knnsearch(fixp,fixp_e);
-        
-        % Mainland goes from last fixp_e to first around anti-clockwise
-        polygon.mainland = polygon.outer(idx(end):idx(1),:); 
-        
-        % Make outer polygon
-        outer_n = [];
-        for ii = 1:length(I)
-           outer_n = [outer_n;fixp(ide(2*ii-1):ide(2*ii),:);...
-                      polygon.outer(idx(2*ii):idx(2*ii-1),:);
-                      NaN NaN];
-        end
-        polygon.outer = outer_n; 
-        % Now remove the NaNs from fixp
-        fixp(I,:) = [];
-        % Remove all islands outside of outer one
-        in = InPolygon(polygon.inner(:,1),polygon.inner(:,2),...
-                       polygon.outer(:,1),polygon.outer(:,2));
-        cn = 0;
-        for ii = 1:length(in)
-            if in(ii) == 1
-                cn = cn + 1;
-                inner_n(cn,:) = polygon.inner(ii,:);
-            elseif ii > 1
-                if in(ii) == 0 && in(ii-1) == 1
-                   cn = cn + 1;
-                   inner_n(cn,:) = [NaN, NaN];
-                end
-            end
-        end
-        if exist('inner_n','var')
-            polygon.inner = inner_n;
-        else
-            polygon.inner = [];
-        end
-    end
+%     %% Make new polygons based on the splitted mesh
+%     if ~isempty(fixp) && ~isempty(ini_p)
+%         % Number of individual outer polygons is equal to length I
+%         I = find(isnan(fixp(:,1)));
+%         fixp_e = fixp(1,:);
+%         for ii = 1:length(I)
+%            fixp_e = [fixp_e;fixp(I(ii)-1,:);fixp(min(I(ii)+1,end-1),:)];
+%         end
+%         fixp_e = unique(fixp_e,'rows','stable');
+%         idx = knnsearch(polygon.outer,fixp_e);
+%         ide = knnsearch(fixp,fixp_e);
+%         
+%         % Mainland goes from last fixp_e to first around anti-clockwise
+%         polygon.mainland = polygon.outer(idx(end):idx(1),:); 
+%         
+%         % Make outer polygon
+%         outer_n = [];
+%         for ii = 1:length(I)
+%            outer_n = [outer_n;fixp(ide(2*ii-1):ide(2*ii),:);...
+%                       polygon.outer(idx(2*ii):idx(2*ii-1),:);
+%                       NaN NaN];
+%         end
+%         polygon.outer = outer_n; 
+%         % Now remove the NaNs from fixp
+%         fixp(I,:) = [];
+%         % Remove all islands outside of outer one
+%         in = InPolygon(polygon.inner(:,1),polygon.inner(:,2),...
+%                        polygon.outer(:,1),polygon.outer(:,2));
+%         cn = 0;
+%         for ii = 1:length(in)
+%             if in(ii) == 1
+%                 cn = cn + 1;
+%                 inner_n(cn,:) = polygon.inner(ii,:);
+%             elseif ii > 1
+%                 if in(ii) == 0 && in(ii-1) == 1
+%                    cn = cn + 1;
+%                    inner_n(cn,:) = [NaN, NaN];
+%                 end
+%             end
+%         end
+%         if exist('inner_n','var')
+%             polygon.inner = inner_n;
+%         else
+%             polygon.inner = [];
+%         end
+%     end
 
-    %% Convert all polygons to CPP
-%     m_proj('Mercator' ,... %'Equidistant Cylindrical',...
-%            'lon',[min(polygon.outer(:,1)) max(polygon.outer(:,1))],...
-%            'lat',[min(polygon.outer(:,2)) max(polygon.outer(:,2))])
-%     [ outer_x,outer_y ] = m_ll2xy( polygon.outer(:,1),polygon.outer(:,2) );
-%     if ~isempty(polygon.inner)
-%         [ inner_x,inner_y ] = m_ll2xy( polygon.inner(:,1),polygon.inner(:,2) );
-%     else
-%         inner_x = []; inner_y = [];
-%     end
-%     if  ~isempty(polygon.mainland)
-%         [ mainland_x,mainland_y ] = m_ll2xy( polygon.mainland(:,1),polygon.mainland(:,2) );
-%     else
-%         mainland_x = []; mainland_y = [];
-%     end
-%     if ~isempty(ini_p)
-%         [ini_p(:,1),ini_p(:,2)] = m_ll2xy( ini_p(:,1),ini_p(:,2) );
-%     end
-%     if ~isempty(fixp)
-%         [fixp(:,1),fixp(:,2)] = m_ll2xy( fixp(:,1),fixp(:,2) );
-%     end
     %% Make bounding box
     bounding_box = [min(polygon.outer(:,1)), min(polygon.outer(:,2)); ...
                     max(polygon.outer(:,1)), max(polygon.outer(:,2))];
@@ -170,49 +149,40 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
             clear lon2 lat2 dx dy b_y b_x b_slope
         end
         
-        % Get min of slope and wavelength and smooth
+        % Get min of slope and wavelength, setting equal to hh_m
         if dist_param > 0
             hh_m = min(hh(:,:,2:end),[],3); 
         else
             hh_m = min(hh(:,:,1:end),[],3); 
         end
-        
-%         figure;
-%         pcolor(lon,lat,hh_m')
-%         shading interp
-
-%         figure;
-%         pcolor(lon,lat,hh_m1')
-%         shading interp
-        % Smooth by checking the adjacent length change fraction
-        %[hh_m,~] = smooth2_lengthchange(hh_m,2*dist_param,1);
-        %hh_m = smooth2a(hh_m,5,5);
 
         % Now convert hh_m into degrees from meters 
         % (estimate from 45 deg azimuth)
         [lon2,lat2,~] = m_fdist(lon_g,lat_g,45,hh_m);
         hh_m = sqrt((lon2 - lon_g).^2 + (lat2 - lat_g).^2);
         
-        % Smoothing
-        %
-        %OPTIONS.Weight = 'cauchy';
-        %OPTIONS.MaxIter = 100;
-        %[hh_m1,S,EXITFLAG] = smoothn(hh_m,'robust',OPTIONS);
-        %nx = 2*round((size(hh_m,2)*0.005+1)/2)-1;
-        %nz = 2*round((size(hh_m,1)*0.005+1)/2)-1;
-        %hh_m2 = savitzkyGolay2D_rle_coupling(size(hh_m,2),size(hh_m,1),...
-        %                                     hh_m,nx,nz,2);
-        I = bad_length_change(hh_m,dist_param*2); nn_s = 1;
-        while length(I)/length(hh_m(:)) > 0.005
-            hh_m1 = smooth2a(hh_m,nn_s,nn_s);
-            nn_s = nn_s + 1;
-            I = bad_length_change(hh_m1,dist_param*2);
-            if nn_s > max(size(hh_m))*0.005
-                break;
+        % Smoothing if slope_param exists
+        if slope_param > 0 
+            %
+            %OPTIONS.Weight = 'cauchy';
+            %OPTIONS.MaxIter = 100;
+            %[hh_m1,S,EXITFLAG] = smoothn(hh_m,'robust',OPTIONS);
+            %nx = 2*round((size(hh_m,2)*0.005+1)/2)-1;
+            %nz = 2*round((size(hh_m,1)*0.005+1)/2)-1;
+            %hh_m2 = savitzkyGolay2D_rle_coupling(size(hh_m,2),size(hh_m,1),...
+            %                                     hh_m,nx,nz,2);
+            I = bad_length_change(hh_m,dist_param*2); nn_s = 1;
+            while length(I)/length(hh_m(:)) > 0.005
+                hh_m1 = smooth2a(hh_m,nn_s,nn_s);
+                nn_s = nn_s + 1;
+                I = bad_length_change(hh_m1,dist_param*2);
+                if nn_s > max(size(hh_m))*0.005
+                    break;
+                end
             end
-        end
-        if exist('hh_m1','var')
-            hh_m = hh_m1;
+            if exist('hh_m1','var')
+                hh_m = hh_m1;
+            end
         end
         % Get min of all the criteria
         if dist_param > 0
@@ -221,7 +191,6 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
         hh_m(hh_m < edgelength) = edgelength;
         % Make the overall interpolant
         F = griddedInterpolant(lon_g,lat_g,hh_m,'linear');
-        %F = griddedInterpolant(x_g,y_g,hh_m,'linear');
         clear lon2 lat2 hh
     end
 
@@ -229,9 +198,6 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     %% Call distmesh        
     [p,t] = distmesh2d(@fd,@fh,@fci,...
                        edgelength,bounding_box,ini_p,fixp,itmax,plot_on);
-    
-    %%% Convert back to lon, lat
-    %[p(:,1),p(:,2)] = m_xy2ll(p(:,1),p(:,2));
     
     if plot_on == 1
         % Plot the map

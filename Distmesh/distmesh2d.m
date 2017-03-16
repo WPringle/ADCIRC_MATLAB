@@ -135,11 +135,6 @@ while 1
   tq = gettrimeshquan( p, t);
   prcq = length(find(tq.qm > 0.6))/length(t);
   if it > itmax/4 && (prcq > 0.999 || (mod(it,50) == 0 && prcq <= prcq_o))
-%       if any(tq.vang > 130/180*pi)
-%           p(t(tq.vang > 130/180*pi),:) = [];
-%           N=size(p,1); pold=inf;
-%           continue;
-%       end  
       endflag = remove_small_connectivity;
       if endflag == 0; continue; end 
       disp('quality of mesh is good enough, exit')
@@ -209,23 +204,11 @@ iflatel = find( JJ < 20*eps ) ;
 inonflatel = setdiff(1:length(JJ),iflatel) ; 
 t = t(inonflatel,:) ;
 
-% WP Fix bad interior angle elements
-[ vtov, nnv, ~, ~, ~ ] = NodeConnect2D( t );
-tq = gettrimeshquan( p, t);
-[I,~] = find(tq.vang < 30*pi/180 | tq.vang > 130*pi/180);
-%       
-for i = I'
-    % Get the node belonging to largest angle
-    [ang,j] = max(tq.vang(i,:));
-    if ang < pi*90/180
-        % Get node belonging to smallest angle
-        [~,j] = min(tq.vang(i,:));
-    end
-    node = t(i,j) ;
-    % Move this node to center of surrounding nodes
-    center = mean(p(vtov(1:nnv(node),node),:));
-    p(node,:) = center;
-end
+% WP fix bad interior angle elements
+fix_interior_angles
+
+% WP fix shitty boundaries
+%fix_shitty_boundaries
 %
 if plot_on == 1
     simpplot(p,t)
@@ -236,14 +219,63 @@ function endflag = remove_small_connectivity
     [ ~, ~, ~, nn, ~ ] = NodeConnect2D( t );
     % Make sure they are not boundary nodes
     d=feval(fd,p,0);
-    if isempty(find(nn' == 4 & d < -h0,1))
+    if isempty(find(nn' == 4 & d < -h0/2,1))
         endflag = 1;
     else
         endflag = 0;
-        p(nn' == 4 & d < -h0,:) = [];
+        p(nn' == 4 & d < -h0/2,:) = [];
         N=size(p,1); pold=inf;
     end
     return;
+end
+
+function fix_interior_angles
+    [ vtov, nnv, ~, ~, ~ ] = NodeConnect2D( t );
+    tq = gettrimeshquan( p, t);
+    [I,~] = find(tq.vang < 30*pi/180 | tq.vang > 130*pi/180);
+    %       
+    for i = I'
+        % Get the node belonging to largest angle
+        [ang,j] = max(tq.vang(i,:));
+        if ang < pi*90/180
+            % Get node belonging to smallest angle
+            [~,j] = min(tq.vang(i,:));
+        end
+        node = t(i,j) ;
+        % Move this node to center of surrounding nodes
+        center = mean(p(vtov(1:nnv(node),node),:));
+        p(node,:) = center;
+    end
+end
+   
+function fix_shitty_boundaries
+    [etbv,vxe,~,~] = extdom_edges( t, p ) ;
+    if length(etbv) == length(vxe);
+        % Boundaries are OK
+        return;
+    end
+    % Some boundaries are shitty
+    while ~isempty(etbv)
+        [~,~,ide] = extdom_polygon( etbv, p, 1, 1, 2 ) ;
+        % Now get the bad edge to check
+        [~,J] = find(etbv(2,ide(end)) == etbv);
+        J(J == ide(end)) = [];
+        for j = J'
+            % Get the bad polygon
+            [vso,idv,~] = extdom_polygon( etbv, pv, j, ipsbeg, ipsend ) ;
+            % Check if inside or outside..
+            vso_m = mean(vso);        % Compute centroids
+            dv = feval(fd,vso_m,0);    % Check if interior or exterior
+            if dv < -geps
+               % Interior, need to make triangle
+               t(end+1,:) = idv;
+            else
+               % Exterior, need to delete triangle
+               t = setdiff(t,idv,'rows','stable');
+            end              
+        end
+
+    end
 end
 
 end
