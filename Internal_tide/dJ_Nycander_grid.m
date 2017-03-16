@@ -50,10 +50,11 @@ beta = 1.455;
 rcutfac = 2.5 ; % Elements within |r - r'| < rcutfac*a will be used in the calculation of dJ/dx
 acut = 2   ; % if a < acut (in km), ignore 
 
-% Setting up parallel
+%Setting up parallel
 if parallel > 0
-    delete(gcp('nocreate'));
-    parpool(parallel);
+    if isempty(gcp())
+        parpool(parallel);
+    end
 end
 
 %% Checking inputs
@@ -159,7 +160,7 @@ parfor l_y = 1:lat_n
         dy_r = -cosd(a12(K)).*r(K);
         
         % Get the difference of the topographic heights
-        bathy_n = bathy(range_x,range_y);
+        bathy_n = bathy(range_y,range_x);
         dh = bathy_n(K) - h_c(l_y,l_x);
         
         % Get the gradient of greens' function
@@ -174,11 +175,15 @@ parfor l_y = 1:lat_n
 
         % Multiply by dx,dy and add the correction for the singularity
         dJx(l_y,l_x) = Jx_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc;
-        dJy(l_y,l_x) = Jy_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc;
+        dJy(l_y,l_x) = Jy_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc;     
     end
 end
 if parallel > 0
     delete(gcp('nocreate'));
+end
+if Tr
+   dJx = dJx'; dJy = dJy';
+   dhx = dhx'; dhy = dhy';
 end
 %EOF
 end

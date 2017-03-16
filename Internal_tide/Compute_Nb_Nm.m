@@ -30,18 +30,22 @@ loncmin = cellfun(@min, lon_N,'UniformOutput',0);
 loncmax = cellfun(@max, lon_N,'UniformOutput',0);
 latcmin = cellfun(@min, lat_N,'UniformOutput',0);
 latcmax = cellfun(@max, lat_N,'UniformOutput',0);
-lon_min = min(min(lon_M),min([loncmin{:}]));
-lon_max = max(max(lon_M),max([loncmax{:}]));
-lat_min = min(min(lat_M),min([latcmin{:}]));
-lat_max = max(max(lat_M),max([latcmax{:}]));
+loncmin = min([loncmin{:}]);
+loncmax = max([loncmax{:}]);
+latcmin = min([latcmin{:}]);
+latcmax = max([latcmax{:}]);
+% Ignore data outside of a large enough domain 
+lon_min = double(max(loncmin,min(lon_M(:))-30));
+lon_max = double(min(loncmax,max(lon_M(:))+30));
+lat_min = double(max(latcmin,min(lat_M(:))-30));
+lat_max = double(min(latcmax,max(lat_M(:))+30));
 m_proj(proj,'lon',[ lon_min lon_max],'lat',[ lat_min lat_max])
 
 % Conversion to projection coordinates
 [xx,yy] = m_ll2xy(lon_M,lat_M);        
 % 
-% xx = lon_M * pi/180;  yy = lat_M * pi/180; 
-% xx = R * (xx - lon0) * cos(lat0);
-% yy = R * yy;
+xx = double(xx);
+yy = double(yy);
 
 %% Calculation
 % initialisation
@@ -58,12 +62,11 @@ for zvalue = 1:length(zcontour)
     x = double(x); y = double(y);
     % Projection conversion
     [x,y] = m_ll2xy(x,y);   
-    %x = x * pi/180;  y = y * pi/180; 
-    %x = R * (x - lon0) * cos(lat0);
-    %y = R * y; 
+    N_now = N{zvalue};
+    NNan = find(~isnan(x));
     
     % Make the interpolant using scatteredInterpolant natural
-    F = scatteredInterpolant(x,y,N{zvalue},'natural','nearest');
+    F = scatteredInterpolant(x(NNan),y(NNan),N_now(NNan),'natural','nearest');
     
     % Get data where depth is equal to rounded zvalue
     I = find( contour_int*int32(B/contour_int) == zcontour(zvalue));

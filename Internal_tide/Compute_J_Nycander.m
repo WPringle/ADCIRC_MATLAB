@@ -112,22 +112,30 @@ if ~isempty(bathyfile)
     % Doing the interpolation onto the xcub and ycub points and replacing
     % the lower order hcub with the higher order one
     hcub = double(F(xcub,ycub));
-    % Getting the higher-order estimation of slope...
-    % First perform interpolation onto XX
-    F_b = F(XX(:,1),XX(:,2));
-    % Now onto small deviation from XX points
-    % x-direc
-    depsx = sqrt(eps)*double(abs(x(2,1)-x(1,1)));
-    F_bx = F(XX(:,1) + depsx,XX(:,2));
-    % y-direc
-    depsy = sqrt(eps)*double(abs(y(2,2)-y(1,2)));
-    F_by = F(XX(:,1),XX(:,2) + depsy);
-    % Getting the slopes of h
-    dh(:,1) = double(F_bx - F_b)/depsx;
-    dh(:,2) = double(F_by - F_b)/depsy;
-    % Setting B actually to the current interpolated one
+    
+
+    
+%     % Getting the higher-order estimation of slope...
+%     % First perform interpolation onto XX
+     F_b = F(XX(:,1),XX(:,2));
+%     % Now onto small deviation from XX points
+%     % x-direc
+%     depsx = 1d5*sqrt(eps)*double(abs(x(2,1)-x(1,1)));
+%     F_bxm = F(XX(:,1) - depsx,XX(:,2));
+%     F_bxp = F(XX(:,1) + depsx,XX(:,2));
+%     % y-direc
+%     depsy = 1d5*sqrt(eps)*double(abs(y(1,2)-y(1,1)));
+%     F_bym = F(XX(:,1),XX(:,2) - depsy);
+%     F_byp = F(XX(:,1),XX(:,2) + depsy);
+%     % Getting the slopes of h
+%     dh(:,1) = double(F_bxp - F_bxm)/(2*depsx);
+%     dh(:,2) = double(F_byp - F_bym)/(2*depsy);
+    %
     B = -F_b;
-    clear x y F_bx F_by F_b
+    clear x y F_b %F_bxp F_bxm F_bxm F_bxp 
+%     dJ = zeros(np,2) ;
+%     J  = zeros(np,1) ;
+%     return;
 else
     % Get the slope of h (= -B);
     [dh(:,1),dh(:,2)] = ADCIRC_Bath_Slope( EToV,XX(:,1),XX(:,2), -B );   

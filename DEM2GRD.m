@@ -47,20 +47,34 @@ function GRID_Z = DEM2GRD(DEM_X,DEM_Y,DEM_Z,GRID_X,GRID_Y,GRID_E,varargin)
 %   *This is actually now commented out in line 93 and thus is not necessarily reqd.
 
 %% Test optional arguments
-if isempty(varargin)
-    nn = length(GRID_X);
-    K  = (1:nn)';        % K is all of the grid
-elseif strcmp(varargin{1},'K')
-    K  = varargin{2};
-    nn = length(K);
-else
-    disp(['argument ' varargin{1} ' invalid'])
-    return
-end
-
-%% Get grid area of DEM
-Dx = abs(diff(DEM_X)); Dy = abs(diff(DEM_Y));
-DELTA_DEM = min(Dx(Dx > 0)) * min(Dy(Dy > 0));
+% Default;
+nn = length(GRID_X);
+K  = (1:nn)';        % K is all of the grid
+if ~isempty(varargin)
+    for var = 1:2:length(varargin)
+        if strcmp(varargin{var},'K')
+            K  = varargin{var+1};
+            nn = length(K); 
+        end
+    end
+    for var = 1:2:length(varargin)        
+        if strcmp(varargin{var},'proj')
+            m_proj(varargin{var+1},...
+                   'lon',[ min(GRID_X(K))-5 max(GRID_X(K))+5],...
+                   'lat',[ min(GRID_Y(K))-5 max(GRID_Y(K))+5])
+            [GRID_X,GRID_Y] = m_ll2xy(GRID_X,GRID_Y);   
+            [DEM_X,DEM_Y]   = m_ll2xy(DEM_X,DEM_Y);
+            I_isnan = find(isnan(DEM_X));
+            DEM_X(I_isnan) = [];
+            DEM_Y(I_isnan) = [];
+            DEM_Z(I_isnan,:) = [];
+        end
+    end
+end  
+%% Get average grid area of DEM
+m_x = mean(DEM_X); m_y = mean(DEM_Y);
+m_idx = knnsearch([DEM_X,DEM_Y],m_x,m_y,'k',3);
+DELTA_DEM = max(abs(diff(DEM_X(m_idx)))) * max(abs(diff(DEM_Y(m_idx)))); 
       
 %% Get average area of each node
 % First obtain element areas
@@ -87,10 +101,10 @@ I = find(DEM_X >= min(GRID_X(K)) - BufferL & ...
          DEM_Y >= min(GRID_Y(K)) - BufferL & ...
          DEM_Y <= max(GRID_Y(K)) + BufferL);
 % Delete uncessary parts of DEM first step
-DEM_X = DEM_X(I); DEM_Y = DEM_Y(I); DEM_Z = DEM_Z(I);  
+DEM_X = DEM_X(I); DEM_Y = DEM_Y(I); DEM_Z = DEM_Z(I,:);  
 
 %% Get cell average for each node by averaging CA surrounding values in DEM
-GRID_Z = zeros(nn,1); 
+GRID_Z = zeros(nn,size(DEM_Z,2)); 
 
 % set up searching algorithm
 disp('setting up knnsearcher for CA > 1')
@@ -101,7 +115,9 @@ disp('doing the search for each value of CA')
 for k = CA_un'
     % Use kd-tree
     IDX = knnsearch(Mkd,[GRID_X(K(CA == k)) GRID_Y(K(CA == k))],'k',k);
-    GRID_Z(CA == k) = mean(DEM_Z(IDX),min(2,size(IDX,1))); 
+    for kk = 1:size(GRID_Z,2)
+        GRID_Z(CA == k,kk) = mean(DEM_Z(IDX,kk),min(2,size(IDX,1))); 
+    end
 end
 %EOF
 end
