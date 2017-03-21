@@ -1,5 +1,5 @@
 function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
-                    wl_param,slope_param,itmax,plot_on,ini_p,fixp,poly_num)
+                    wl_param,slope_param,itmax,plot_on,ini_p,fixp,map_num)
 % Function for calling grid generator for any general region in the world
 % Inputs:  mapfile    : filename and path of the map created in SMS to read in
 %          bathyfile  : filename of the bathymetric dataset (the version here
@@ -18,7 +18,8 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
 %                       not (Yes = 1, No = 0)
 %          ini_p      : optional initial distribution of p
 %          fix_p      : optional fixed node points
-%          poly_num   : the polygon number inside the mapfile
+%          map_num    : the sub-map number inside the mapfile, or the
+%                       bounding box inside a shapefile
 %
 % Outputs: p          : the node positions in lon,lat
 %          t          : the triangulation of the mesh
@@ -33,54 +34,62 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     %R = 6378206.4;
     %edgelength = edgelength/R;
     %% Read the map
-    [~, ~, polygon] = Read_SMS_Map( mapfile, plot_on, poly_num );
+    if strcmp(mapfile{1}(end-2:end),'map')
+        % Read .map file produced in SMS (map_num is the map number inside
+        % the .map file)
+        [~, ~, polygon] = Read_SMS_Map( mapfile, plot_on, map_num );
+    elseif strcmp(mapfile{1}(end-2:end),'shp')
+        % Read polygon from shape file (map_num is the bounding box we
+        % want to extract)
+        polygon = Read_shapefile( mapfile, map_num, 8, plot_on );
+    end
     
-%     %% Make new polygons based on the splitted mesh
-%     if ~isempty(fixp) && ~isempty(ini_p)
-%         % Number of individual outer polygons is equal to length I
-%         I = find(isnan(fixp(:,1)));
-%         fixp_e = fixp(1,:);
-%         for ii = 1:length(I)
-%            fixp_e = [fixp_e;fixp(I(ii)-1,:);fixp(min(I(ii)+1,end-1),:)];
-%         end
-%         fixp_e = unique(fixp_e,'rows','stable');
-%         idx = knnsearch(polygon.outer,fixp_e);
-%         ide = knnsearch(fixp,fixp_e);
-%         
-%         % Mainland goes from last fixp_e to first around anti-clockwise
-%         polygon.mainland = polygon.outer(idx(end):idx(1),:); 
-%         
-%         % Make outer polygon
-%         outer_n = [];
-%         for ii = 1:length(I)
-%            outer_n = [outer_n;fixp(ide(2*ii-1):ide(2*ii),:);...
-%                       polygon.outer(idx(2*ii):idx(2*ii-1),:);
-%                       NaN NaN];
-%         end
-%         polygon.outer = outer_n; 
-%         % Now remove the NaNs from fixp
-%         fixp(I,:) = [];
-%         % Remove all islands outside of outer one
-%         in = InPolygon(polygon.inner(:,1),polygon.inner(:,2),...
-%                        polygon.outer(:,1),polygon.outer(:,2));
-%         cn = 0;
-%         for ii = 1:length(in)
-%             if in(ii) == 1
-%                 cn = cn + 1;
-%                 inner_n(cn,:) = polygon.inner(ii,:);
-%             elseif ii > 1
-%                 if in(ii) == 0 && in(ii-1) == 1
-%                    cn = cn + 1;
-%                    inner_n(cn,:) = [NaN, NaN];
-%                 end
-%             end
-%         end
-%         if exist('inner_n','var')
-%             polygon.inner = inner_n;
-%         else
-%             polygon.inner = [];
-%         end
-%     end
+    %% Make new polygons based on the splitted mesh
+    if ~isempty(fixp) && ~isempty(ini_p)
+        % Number of individual outer polygons is equal to length I
+        I = find(isnan(fixp(:,1)));
+        fixp_e = fixp(1,:);
+        for ii = 1:length(I)
+           fixp_e = [fixp_e;fixp(I(ii)-1,:);fixp(min(I(ii)+1,end-1),:)];
+        end
+        fixp_e = unique(fixp_e,'rows','stable');
+        idx = knnsearch(polygon.outer,fixp_e);
+        ide = knnsearch(fixp,fixp_e);
+        
+        % Mainland goes from last fixp_e to first around anti-clockwise
+        polygon.mainland = polygon.outer(idx(end):idx(1),:); 
+        
+        % Make outer polygon
+        outer_n = [];
+        for ii = 1:length(I)
+           outer_n = [outer_n;fixp(ide(2*ii-1):ide(2*ii),:);...
+                      polygon.outer(idx(2*ii):idx(2*ii-1),:);
+                      NaN NaN];
+        end
+        polygon.outer = outer_n; 
+        % Now remove the NaNs from fixp
+        fixp(I,:) = [];
+        % Remove all islands outside of outer one
+        in = InPolygon(polygon.inner(:,1),polygon.inner(:,2),...
+                       polygon.outer(:,1),polygon.outer(:,2));
+        cn = 0;
+        for ii = 1:length(in)
+            if in(ii) == 1
+                cn = cn + 1;
+                inner_n(cn,:) = polygon.inner(ii,:);
+            elseif ii > 1
+                if in(ii) == 0 && in(ii-1) == 1
+                   cn = cn + 1;
+                   inner_n(cn,:) = [NaN, NaN];
+                end
+            end
+        end
+        if exist('inner_n','var')
+            polygon.inner = inner_n;
+        else
+            polygon.inner = [];
+        end
+    end
 
     %% Make bounding box
     bounding_box = [min(polygon.outer(:,1)), min(polygon.outer(:,2)); ...
@@ -97,13 +106,31 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
         lon = lon(I); lat = lat(J); 
         bathy = -bathy(I,J); bathy(bathy < 0) = 0;
         [lon_g,lat_g] = ndgrid(lon,lat);
+        % Check whether we need Antarctica bathy from TPXO8
+        if min(polygon.outer(:,2)) < -65
+           % Need TPXO8
+            filename = '../../grid_tpxo8atlas_30_v1.nc';
+            lon = ncread(filename,'lon_z');
+            lat = ncread(filename,'lat_z');
+            hz = ncread(filename,'hz');
+            % Find cutoff lat
+            lat_max = max(polygon.mainland(polygon.mainland(:,2) < -65,2));
+            I = find(lon > min(polygon.outer(:,1)) & lon < max(polygon.outer(:,1)));
+            J = find(lat > min(polygon.outer(:,2)) & lat < lat_max);
+            lon = lon(I); lat = lat(J); hz = hz(J,I); hz(hz < 0) = 0;
+            [lon_s,lat_s] = ndgrid(lon,lat);
+            F = griddedInterpolant(lon_s,lat_s,hz','linear');
+            K = find(lat_g < lat_max & bathy == 0);
+            bathy(K) = F(lon_g(K),lat_g(K));
+            clear hz lat_s lon_s
+        end
         if dist_param > 0
             nn = nn + 1;
             x_v = reshape(lon_g,[],1);
             y_v = reshape(lat_g,[],1);
             d = fd( [x_v,y_v], 1 ) ;
             % reshape back
-            d = reshape(d,length(I),[]);
+            d = reshape(d,size(bathy,1),[]);
             % add into edge function
             hh(:,:,nn) = edgelength - dist_param*d ; 
             clear x_v y_v d
@@ -149,55 +176,69 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
             clear lon2 lat2 dx dy b_y b_x b_slope
         end
         
-        % Get min of slope and wavelength, setting equal to hh_m
+        % Get min of slope and wavelength and smooth
         if dist_param > 0
             hh_m = min(hh(:,:,2:end),[],3); 
         else
             hh_m = min(hh(:,:,1:end),[],3); 
         end
+        
+%         figure;
+%         pcolor(lon,lat,hh_m')
+%         shading interp
+
+%         figure;
+%         pcolor(lon,lat,hh_m1')
+%         shading interp
+        % Smooth by checking the adjacent length change fraction
+        %[hh_m,~] = smooth2_lengthchange(hh_m,2*dist_param,1);
+        %hh_m = smooth2a(hh_m,5,5);
 
         % Now convert hh_m into degrees from meters 
         % (estimate from 45 deg azimuth)
         [lon2,lat2,~] = m_fdist(lon_g,lat_g,45,hh_m);
         hh_m = sqrt((lon2 - lon_g).^2 + (lat2 - lat_g).^2);
         
-        % Smoothing if slope_param exists
-        if slope_param > 0 
-            %
-            %OPTIONS.Weight = 'cauchy';
-            %OPTIONS.MaxIter = 100;
-            %[hh_m1,S,EXITFLAG] = smoothn(hh_m,'robust',OPTIONS);
-            %nx = 2*round((size(hh_m,2)*0.005+1)/2)-1;
-            %nz = 2*round((size(hh_m,1)*0.005+1)/2)-1;
-            %hh_m2 = savitzkyGolay2D_rle_coupling(size(hh_m,2),size(hh_m,1),...
-            %                                     hh_m,nx,nz,2);
-            I = bad_length_change(hh_m,dist_param*2); nn_s = 1;
-            while length(I)/length(hh_m(:)) > 0.005
-                hh_m1 = smooth2a(hh_m,nn_s,nn_s);
-                nn_s = nn_s + 1;
-                I = bad_length_change(hh_m1,dist_param*2);
-                if nn_s > max(size(hh_m))*0.005
-                    break;
-                end
-            end
-            if exist('hh_m1','var')
-                hh_m = hh_m1;
-            end
-        end
+        % Smoothing
+        %
+        %OPTIONS.Weight = 'cauchy';
+        %OPTIONS.MaxIter = 100;
+        %[hh_m1,S,EXITFLAG] = smoothn(hh_m,'robust',OPTIONS);
+        %nx = 2*round((size(hh_m,2)*0.005+1)/2)-1;
+        %nz = 2*round((size(hh_m,1)*0.005+1)/2)-1;
+        %hh_m2 = savitzkyGolay2D_rle_coupling(size(hh_m,2),size(hh_m,1),...
+        %                                     hh_m,nx,nz,2);
+        %I = bad_length_change(hh_m,dist_param*2); 
+	nn_s = 20;
+        %while length(I)/length(hh_m(:)) > 0.005
+        %    hh_m1 = smooth2a(hh_m,nn_s,nn_s);
+        %    nn_s = nn_s + 1;
+        %    I = bad_length_change(hh_m1,dist_param*2);
+        %    if nn_s > max(size(hh_m))*0.005
+        %        break;
+        %    end
+        %end
+        %if exist('hh_m1','var')
+        %    hh_m = hh_m1;
+        %end
         % Get min of all the criteria
+	hh_m = smooth2a(hh_m,nn_s,nn_s);
         if dist_param > 0
             hh_m = min(hh_m,hh(:,:,1)); 
         end
         hh_m(hh_m < edgelength) = edgelength;
         % Make the overall interpolant
         F = griddedInterpolant(lon_g,lat_g,hh_m,'linear');
+        %F = griddedInterpolant(x_g,y_g,hh_m,'linear');
         clear lon2 lat2 hh
     end
 
     
     %% Call distmesh        
-    [p,t] = distmesh2d(@fd,@fh,@fci,...
-                       edgelength,bounding_box,ini_p,fixp,itmax,plot_on);
+    [p,t] = distmesh2d(@fd,@fh,edgelength,bounding_box,ini_p,fixp,itmax,plot_on);
+    
+    %%% Convert back to lon, lat
+    %[p(:,1),p(:,2)] = m_xy2ll(p(:,1),p(:,2));
     
     if plot_on == 1
         % Plot the map
@@ -274,13 +315,12 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
         lon_v = reshape(lon_g,[],1);
         lat_v = reshape(lat_g,[],1);
         
-        % Find (2*nn_s)^2 grid points close to p
-        nne = 2*nn_s;
-        IDX = knnsearch([lon_v lat_v],p,'k',(2*nne)^2);
+        % Find nn_s^2 grid points close to p
+        IDX = knnsearch([lon_v lat_v],p,'k',nn_s^2);
         IDX = unique(IDX(:));
         
         % Smooth the edgefunction
-        hh_m1 = smooth2a(hh_m,nne,nne);
+        hh_m1 = smooth2a(hh_m,2*nn_s,2*nn_s);
 %        IDX_n = zeros(length(IDX),1); mean_v = zeros(length(IDX),1);
 %         % Only keep the largest value in the nearest four, and get mean of
 %         % other three
