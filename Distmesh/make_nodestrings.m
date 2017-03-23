@@ -1,14 +1,12 @@
 % Load mesh
 clearvars; close all;
 
-[ev,pv,~,~,~,~] = readfort14('IDIOMS_v7.1.grd');
+[ev,pv,B,~,~,~] = readfort14('INDPAC_sponge.grd');
 
 % Nodes for breaking outer polygon into ocean and mainland
-ob_se = [2193659 1375593;
-        1612617 1682227;
-        2131520 2087835;
-        2458237 1904498;
-        2760158 3168557];
+ob_se = [3256547 3571732;
+        258906 1460086;
+        2894522 2838695];
 
 % Extrace edges on the boundaries from a given mesh, pv, ev %
 [etbv,vxe,etoe,etof] = extdom_edges( ev, pv ) ;
@@ -39,8 +37,10 @@ while ~isempty(etbv)
             ipsend = 1 ; %   
         end
         [vso,idv,ide] = extdom_polygon( etbv, pv, iedbeg, ipsbeg, ipsend ) ;
+        if length(vso) < 6
+        end
         pacw = ~ispolycw(vso(:,1),vso(:,2));
-        if start == 1 && pacw == 0; 
+        if start == 1 && pacw == 0
             break; 
         end
         % vso(:,2) - coordinate of an extracted polygon 
@@ -50,9 +50,6 @@ while ~isempty(etbv)
     end
     plot(vso(:,1),vso(:,2))
     hold on
-    if length(vso) < 6
-        
-    end
     if start == 1
         if ~isempty(ob_se)
             % ocean & mainland
@@ -66,6 +63,7 @@ while ~isempty(etbv)
                 neta = neta + nvdll(nope);
                 ibtypee(nope) = 0;
                 nbdv(1:nvdll(nope),nope) = idv(I_s:I_e)'; 
+                plot(pv(nbdv(1:nvdll(nope),nope),1),pv(nbdv(1:nvdll(nope),nope),2))
                 
                 % Get mainland
                 nbou = nbou + 1;
@@ -73,16 +71,18 @@ while ~isempty(etbv)
                 I_s = I_e;
                 if nope < length(ob_se)
                     I_e = find(idv == ob_se(nope+1,1));
+                else
+                    I_e = find(idv == ob_se(1,1));
+                end
+                if I_e > I_s
                     nvell(nbou) = length(idv(I_s:I_e));
                     nbvv(1:nvell(nbou),nbou) = idv(I_s:I_e)'; 
                 else
-                    I_e = length(idv);
-                    I_ee = find(idv == ob_se(1,1));
-                    nvell(nbou) = length(idv(I_s:I_e)) + length(idv(1:I_ee));
-                    nbvv(1:nvell(nbou),nbou) = [idv(I_s:I_e)'; idv(1:I_ee)']; 
-                end
+                    nvell(nbou) = length(idv(I_s:end)) + length(idv(1:I_e));
+                    nbvv(1:nvell(nbou),nbou) = [idv(I_s:end)'; idv(1:I_e)'];  
+                end  
                 nvel = nvel + nvell(nbou);
-                
+                plot(pv(nbvv(1:nvell(nbou),nbou),1),pv(nbvv(1:nvell(nbou),nbou),2))
             end
         else
             % mainland
@@ -123,5 +123,5 @@ boudat.nvell = nvell ;
 boudat.ibtype = ibtype ;
 boudat.nbvv = nbvv ;  
 
-writefort14( 'IDIOMS_v7.1_ns.grd' , ev, pv, ...
-             zeros(length(pv),1), opedat , boudat ,'grid' ) ;
+writefort14( 'INDPAC_sponge_ns.grd' , ev, pv, ...
+              B, opedat , boudat ,'grid' ) ;
