@@ -28,10 +28,11 @@ lat = ncread('fort.61.nc','y');
 
 % Find the gappiness of each signal
 I = []; %[9:length(lon)];
+dt = time(2) - time(1);
 for i = 1:length(lon)
     L = length(find(~isnan(zeta(i,:))));
-    % Ignore if data quite gappy
-    if L/size(zeta,2) < 0.8
+    % Ignore if we have less than ten days of data
+    if L*dt < 10
         I = [I; i];
     end
 end
@@ -49,6 +50,7 @@ for c = const
 end
 c_o = zeros(length(lon),length(const));
 c_n = zeros(length(lon),length(const));
+first_call = 1;
 for i = 1:length(kmlS)
     [I,dist] = knnsearch([lon,lat],[kmlS(i).Lon kmlS(i).Lat]);
     if dist < 1d-5
@@ -64,6 +66,12 @@ for i = 1:length(kmlS)
         k = 0;
         for c = const
             k = k + 1;
+            
+            % For printing csv to be read by FigGen
+            if first_call
+                fida{k} = fopen([c{1} '_amp_' type '.csv'],'w');
+            end
+            
             figure(k);
             
             % The observed data
@@ -94,7 +102,12 @@ for i = 1:length(kmlS)
             end  
             [X,Y] = m_ll2xy(lon(I),lat(I));
             scatter(X,Y,50,error,'filled','MarkerEdgeColor','k')  
+            
+            % Printing csv to be read by FigGen
+            fprintf(fida{k},'%9.3f, %9.3f, %d, %8.3f, %8.3f, %8.3f \n',...
+                    lon(I),lat(I),1,obs,num,error);
         end
+        first_call = 0;
     end
 end
 k = 0;
@@ -112,3 +125,5 @@ for c = const
     rms_c = rms(c_n(:,k) - c_o(:,k));
     m_text(80,40,['RMS_{cmp} = ' num2str(rms_c*100) ' cm'])
 end
+
+fclose('all')
