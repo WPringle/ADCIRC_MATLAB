@@ -1,4 +1,4 @@
-function polygon = Read_shapefile( finputname, bbox, min_length, plot_on )
+function polygon = Read_shapefile( finputname, bbox, min_length, h0, plot_on )
 % Read_shapefile: Reads a shapefile polygon on the coastline, extracting
 % the desired area out, and making the open ocean boundaries automatically
 
@@ -11,23 +11,33 @@ function polygon = Read_shapefile( finputname, bbox, min_length, plot_on )
 for fname = finputname
     % Read the structure
     S = shaperead(fname{1});
+    % Get rid of unwanted components
+    F = fieldnames(S);
+    D = struct2cell(S);
+    S = cell2struct(D(3:4,:), F(3:4));
+    
     % Get only the polygons which fit within bbox & and are larger than
     % specified number of points
     nn = 0; I = [];
     for s = 1:length(S)
-        x_n = S(s).X; y_n = S(s).Y;
-        if length(x_n) < min_length; continue; end
+        x_n = S(s).X; y_n = S(s).Y; 
+        x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
+        m_d = mean(abs(diff([x_n; y_n],[],2)),2); m_d = norm(m_d,2);
+        %if length(x_n) < min_length; continue; end
+        if length(x_n) < h0/m_d*min_length; continue; end
         if any(x_n > bbox(1,1)) && any(x_n < bbox(1,2)) && ...
            any(y_n > bbox(2,1)) && any(y_n < bbox(2,2))   
            nn = nn + 1;
            I(nn) = s;
         end
     end
-    if exist('SG','var')
-        % Keep the following polygons
-        SG = [SG; S(I)];
-    else
-        SG = S(I);
+    if ~isempty(S)
+        if exist('SG','var')
+            % Keep the following polygons
+            SG = [SG; S(I)];
+        else
+            SG = S(I);
+        end
     end
 end
 
@@ -42,10 +52,12 @@ for s = 1:length(SG)
         cw = ispolycw(new_island(:,1), new_island(:,2));
         if cw == 1
             polygon.inner = [polygon.inner; ...
-                             new_island];
+                             new_island; ...
+                             NaN NaN];
         else
             polygon.inner = [polygon.inner; ...
-                             flipud(new_island)];    
+                             flipud(new_island);...
+                             NaN NaN];    
         end
     else
         lb_num = lb_num + 1;

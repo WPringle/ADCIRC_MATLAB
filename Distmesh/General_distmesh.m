@@ -40,13 +40,13 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     elseif strcmp(mapfile{1}(end-2:end),'shp')
         % Read polygon from shape file (map_num is the bounding box we
         % want to extract)
-        polygon = Read_shapefile( mapfile, map_num, 8, plot_on );
+        polygon = Read_shapefile( mapfile, map_num, 7, edgelength, plot_on );
     end
 
     %% Make bounding box
     bounding_box = [min(polygon.outer(:,1)), min(polygon.outer(:,2)); ...
-                    max(polygon.outer(:,1)), max(polygon.outer(:,2))];
-
+                    max(polygon.outer(:,1)), max(polygon.outer(:,2))];     
+    
     %% Make edge function interpolant
     nn = 0; % Counter for different criteria
     if slope_param > 0 || wl_param > 0 || dist_param > 0
