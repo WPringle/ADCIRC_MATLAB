@@ -174,9 +174,9 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
 
     
     %% Call distmesh        
-    [p,t] = distmesh2d(@fd,@fh,@fci,...
+    [p,t] = distmesh2d(@fd,@fh,...   
                        edgelength,bounding_box,ini_p,fixp,itmax,plot_on);
-    
+    %@fci,
     if plot_on == 1
         % Plot the map
         hold on

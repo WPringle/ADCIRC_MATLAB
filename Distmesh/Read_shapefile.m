@@ -23,10 +23,14 @@ for fname = finputname
         x_n = S(s).X; y_n = S(s).Y; 
         x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
         m_d = mean(abs(diff([x_n; y_n],[],2)),2); m_d = norm(m_d,2);
-        %if length(x_n) < min_length; continue; end
+        % Ignore small length shapes
         if length(x_n) < h0/m_d*min_length; continue; end
         if any(x_n > bbox(1,1)) && any(x_n < bbox(1,2)) && ...
            any(y_n > bbox(2,1)) && any(y_n < bbox(2,2))   
+           % Make sure we also ignore the shapes where the length of 
+           % the array thats within bbox is small
+           xtemp = get_x_y_in_bbox(S(s),bbox);
+           if length(xtemp) < h0/m_d*min_length; continue; end
            nn = nn + 1;
            I(nn) = s;
         end
@@ -67,7 +71,15 @@ end
 
 % Now make outer polygon by stitching together ocean and mainland
 % boundaries in correct order
-polygon.mainland = []; polygon.outer = []; lb = 1; end_e = 2;
+polygon.mainland = []; polygon.outer = []; end_e = 2;
+% Get the starting lb for the longest shape within bbox
+mL = 0;
+for lbt = 1:length(lb_v)
+    X_n = get_x_y_in_bbox(SG(lb_v(lbt)),bbox);
+    if length(X_n) > mL
+        lb = lbt;
+    end
+end
 while ~isempty(lb_v)
     X_n = get_x_y_in_bbox(SG(lb_v(lb)),bbox);
     if isempty(X_n)
@@ -168,7 +180,7 @@ function X_n = get_x_y_in_bbox(SG,bbox)
     I = find(X_n(:,1) > bbox(1,1) & X_n(:,1) < bbox(1,2) & ...
              X_n(:,2) > bbox(2,1) & X_n(:,2) < bbox(2,2));
     X_n = X_n(I,:);
-    if isempty(I); return; end
+    if length(I) < 2; return; end
     % Find the points that are close to an edge and re-sort if necessary
     is = [];
     m_d = mean(abs(diff(X_n))); m_d = norm(m_d,2);

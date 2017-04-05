@@ -127,6 +127,11 @@ while 1
             plot(movable(:,1),movable(:,2),'o');
             hold off
         end
+    else
+        % we cant see the output so lets plot to temporary file
+        if mod(it,10) == 0
+        	save('Temp_grid.mat','it','p','t');
+        end
     end
     %
   end
@@ -187,7 +192,7 @@ while 1
       disp('no movement of nodes, exit')
       break; 
   end
-  
+      
   toc
 end
 
