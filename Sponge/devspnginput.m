@@ -23,9 +23,9 @@ sbnd = [1,3];
 % set sponge type 
 spngtype = 'poly'; 
 F = 20; % parameters 
-rat = 1/3; % sponge type
+rat = 1/2; % sponge type
 period = 12.42*3600; %period of M2 wave
-frac   = 0.1; % length of the sponge zone/length of M2 wave
+frac   = 0.2; % length of the sponge zone/length of M2 wave
 
 % mindepth allowable for dividing TPXO uH by our bathymetry H
 dmin = 10;
@@ -33,7 +33,7 @@ dmin = 10;
 % NB: First iteration set write == 1, get the spng_lat_lon and fort.13
 % file. Interpolate OTPS onto spng_lat_lon elsewhere then do second
 % iteration setting write = 0.
-write = 0; % write the spong_lat_lon or not
+write = 1; % write the spong_lat_lon or not
 
 %% Make sponge and output fort 13
 f13file = ['fort.13.sp_F' num2str(F) '_R' num2str(rat)];
@@ -58,28 +58,17 @@ U   = cell(f15dat.nbfr,1);
 V   = cell(f15dat.nbfr,1);
 for k = 1:f15dat.nbfr
     % Get the amp
-%     T = readtable([hmtpxo strtrim(f15dat.bountag(k).name) hsuf],...
-%                   'HeaderLines',2);
     [T,~] = readotpsout( [hmtpxo ...
                            lower(strtrim(f15dat.bountag(k).name)) hsuf] ); 
               
     % Get nearest interp for -99999 values and save for fort.53001
     Ha{k} = nearestinterpOTPS(T);
-%     J = find(table2array(T(:,3)) == -99999 ); 
-%     if ~isempty(J)
-%         K = find(table2array(T(:,3)) ~= -99999 );
-%         IDX = knnsearch([T.Lon(K),T.Lat(K)],[T.Lon(J),T.Lat(J)]);
-%         T(J,3) = T(K(IDX),3);
-%         T(J,4) = T(K(IDX),4);     
-%     end
-    % Save for fort.53001
-    %Ha{k} = table2array([T(:,3), T(:,4)]);
     
     % Enter into the f15 structure
     f15dat.opeemoefa(k).val = [];
     for op = 1:opedat.nope
         I = knnsearch([T(2,:)' T(1,:)'],pv(opedat.nbdv(1:opedat.nvdll(op),op),:));
-        f15dat.opeemoefa(k).val = [f15dat.opeemoefa(k).val; T(3:4,:)'];
+        f15dat.opeemoefa(k).val = [f15dat.opeemoefa(k).val; T(3:4,I)'];
     end
     
     % Get the U
@@ -134,15 +123,11 @@ for op = 1:opedat.nope
                 fprintf(f53, '%14.9e %14.9e \n', Ha{k}(nn,:)) ;
                 % Divide uH from TPXO8 by H for the amp only
                 fprintf(f54, '%14.9e %14.9e %14.9e %14.9e \n', ...
-                        U{k}(nn,:)./[max(dmin,10) 1],...
-                        V{k}(nn,:)./[max(dmin,10) 1]);
+                        U{k}(nn,:)./[max(H,dmin) 1],...
+                        V{k}(nn,:)./[max(H,dmin) 1]);
             end
         end
     end
 end
 fclose(f53);
 fclose(f54);
-
-
-           
-

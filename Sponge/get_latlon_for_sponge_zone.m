@@ -11,7 +11,7 @@ function [sponge,opedat,boudat,pv,B] = get_latlon_for_sponge_zone(...
 g = 9.81; % gravity
 
 % Load mesh
-if strcmp(f14file(end-2:end),'grd')
+if strcmp(f14file(end-2:end),'grd') || strcmp(f14file(end-1:end),'14')
     [~,pv,B,opedat,boudat] = readfort14(f14file);
 elseif strcmp(f14file(end-2:end),'mat')
     load(f14file)
@@ -31,30 +31,33 @@ for op = 1:opedat.nope
     idx = cell(2,1);
     if mean(abs(diff(pv(nodes,1)))) < mean(abs(diff(pv(nodes,2))))
        % boundary is almost parallel to longitude
-       sponge(op).orientation = 'x';
+       sponge(op).orientation = 1;
        for ii = 1:2
             % go backwards and forwards of line and 
             % keep direction of most number of nodes
-            xmax = max(pv(nodes,1)) + (ii-1)*L;
-            xmin = min(pv(nodes,1)) + (ii-2)*L;
+            xmax = max(pv(nodes,1))*(2-ii) + min(pv(nodes,1))*(ii-1) + (ii-1)*L;
+            xmin = max(pv(nodes,1))*(2-ii) + min(pv(nodes,1))*(ii-1) + (ii-2)*L;
             idx{ii} = find(pv(:,1) <= xmax & pv(:,1) >= xmin & ...
                        pv(:,2) < max(pv(nodes,2)) + 1 & ...
                        pv(:,2) > min(pv(nodes,2)) - 1);   
        end
     else
         % boundary is almost parallel to latitude
-        sponge(op).orientation = 'y';
+        sponge(op).orientation = 2;
         for ii = 1:2
             % go backwards and forwards of line and 
             % keep direction of most number of nodes
-            ymax = max(pv(nodes,2)) + (ii-1)*L;
-            ymin = min(pv(nodes,2)) + (ii-2)*L;
+            ymax = max(pv(nodes,2))*(2-ii) + min(pv(nodes,2))*(ii-1) + (ii-1)*L;
+            ymin = max(pv(nodes,2))*(2-ii) + min(pv(nodes,2))*(ii-1) + (ii-2)*L;
             idx{ii} = find(pv(:,2) <= ymax & pv(:,2) >= ymin & ...
                        pv(:,1) < max(pv(nodes,1)) + 1 & ...
                        pv(:,1) > min(pv(nodes,1)) - 1);   
         end
     end
     [~,maxloc] = max(cellfun('length', idx));
+    if maxloc == 1
+         sponge(op).orientation = sponge(op).orientation*-1;
+    end
     idx = idx{maxloc};
     idx_g = [idx_g; idx]; 
     sponge(op).idx = idx;
