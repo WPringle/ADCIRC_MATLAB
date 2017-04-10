@@ -10,23 +10,23 @@ clearvars; clc;
 hmtpxo = './OTPSEXTRACTDAT/' ;
 
 % set suffix of file names
-hsuf = ['.dat'] ; 
-usuf = ['U.dat'] ;
-vsuf = ['V.dat'] ; 
+hsuf = '.dat' ; 
+usuf = 'U.dat' ;
+vsuf = 'V.dat' ; 
 
 % our grid
-f14file = '../INDPAC_SP.grd' ;
+f14file = '../INDWPAC_v1.mat' ;
 
 % sponge boundaries (select which boundaries to set a sponge at
-sbnd = [1,3];
+sbnd = [1,2];
 
 % set sponge type 
 spngtype = 'poly'; 
 F = 20; % parameters 
 rat = 1/2; % sponge type
 period = 12.42*3600; %period of M2 wave
-frac   = 0.2; % length of the sponge zone/length of M2 wave
-
+frac   = [0.15 0.075]; % length of the sponge zone/length of M2 wave 
+%                      (must same size as sbnd)
 % mindepth allowable for dividing TPXO uH by our bathymetry H
 dmin = 10;
 
@@ -41,8 +41,22 @@ f13file = ['fort.13.sp_F' num2str(F) '_R' num2str(rat)];
 % make the fort13 with the sponge coefficients
 [sponge,opedat,boudat,pv,B] = makefort13sponge(f13file,f14file,period,...
                                            frac,spngtype,F,rat,sbnd,write);
-if write == 1
+if write == 0
     return;
+end
+
+% read sponge from fort.13_rev in case it has been altered in SMS etc..
+if exist([f13file '_rev'],'file')
+    % Read in new points
+    idx_g = dlmread([f13file '_rev'],'',9,0); idx_g = idx_g(:,1);
+    % rewrite the spng_lat_lon file
+    dlmwrite('spng_lat_lon_rev',pv(idx_g,:),'precision',7);
+    %
+    % Change idx in sponge
+    for op = 1:length(sbnd)
+        sponge(op).idx = intersect(sponge(op).idx,idx_g);
+        sponge(op).pv  = pv(sponge(op).idx,:);
+    end
 end
 
 %% Make the fort.15, and get info from tpxO8
@@ -98,7 +112,10 @@ for k = 1: f15dat.nbfr
     fprintf(f54,'%14.9f %f %f %s\n', f15dat.bounspec(k).val, f15dat.bountag(k).name ) ; 
 end
 % NP
-ne = length(sponge(1).idx) + length(sponge(3).idx);
+ne = 0;
+for op = sbnd
+    ne = ne + length(sponge(op).idx);
+end
 fprintf(f53,'%d \n', ne) ; 
 fprintf(f54,'%d \n', ne) ; 
 nn = 0;
@@ -110,7 +127,6 @@ for op = 1:opedat.nope
         % print node number
         fprintf(f53, '%d \n', sponge(op).idx(i)) ; 
         fprintf(f54, '%d \n', sponge(op).idx(i)) ; 
-
         H = B(sponge(op).idx(i));
         % print amp and phases
         for k = 1: f15dat.nbfr

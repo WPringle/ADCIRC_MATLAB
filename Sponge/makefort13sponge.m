@@ -11,13 +11,19 @@ alpha = 2; % second order polynomial
 %% make the sigma based on spongetype and coefficients
 sigma = []; idspg_node = [];
 for op = opv
-    or_abs = abs(sponge(op).orientation);
-    or_sign = sign(sponge(op).orientation);
-    % the x (or y) distance from the open boundary
-    [~,d] = knnsearch(...
-     max(pv(opedat.nbdv(1:opedat.nvdll(op),op),or_abs))*(1-or_sign)/2 + ...
-     min(pv(opedat.nbdv(1:opedat.nvdll(op),op),or_abs))*(1+or_sign)/2,...
-                      sponge(op).pv(:,or_abs));
+    nodes = opedat.nbdv(1:opedat.nvdll(op),op);
+    if abs(sponge(op).orientation) < 3
+        % Parallel boundaries
+        or_abs = abs(sponge(op).orientation);
+        or_sign = sign(sponge(op).orientation);
+        % the x (or y) distance from the open boundary
+        [~,d] = knnsearch(max(pv(nodes,or_abs))*(1-or_sign)/2 + ...
+                          min(pv(nodes,or_abs))*(1+or_sign)/2,...
+                          sponge(op).pv(:,or_abs));
+    else
+        d = dsegment(sponge(op).pv,pv(nodes,:));
+        d = min(d,[],2);
+    end
     % change orientation so origin is at the start of sponge
     d = max(sponge(op).L-d,0);
     % need to get metre equivalents of L & d (roughly)
