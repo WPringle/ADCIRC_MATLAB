@@ -13,7 +13,7 @@ ob_se = [3256547 3571732;
 %subplot(2,2,1) ; triplot( ev, pv(:,1), pv(:,2) ) ;
 
 if ~isempty(ob_se)
-    iedbeg  = knnsearch(vxe,pv(ob_se(1,1),:));
+    iedbeg  = knnsearch(pv(etbv(1,:),:),pv(ob_se(1,1),:));
 else
     iedbeg  = 1 ;
 end

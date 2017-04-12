@@ -197,8 +197,6 @@ while 1
 end
 
 %% Clean up and plot final mesh
-[p,t] = fixmesh(p,t);
-
 % DW, get rid of element with vanish area
 xr = 0.5*(p(t(:,2),:) - p(t(:,1),:)) ; 
 xs = 0.5*(p(t(:,3),:) - p(t(:,1),:)) ;
@@ -215,6 +213,9 @@ fix_interior_angles
 % WP fix shitty boundaries
 %fix_shitty_boundaries
 %
+% Clean fixmesh
+[p,t] = fixmesh(p,t);
+
 if plot_on == 1
     simpplot(p,t)
 end

@@ -137,6 +137,7 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
         % Now convert hh_m into degrees from meters 
         % (estimate from 45 deg azimuth)
         [lon2,lat2,~] = m_fdist(lon_g,lat_g,45,hh_m);
+        lon2(lon2 > 180) = lon2(lon2 > 180) - 360;
         hh_m = sqrt((lon2 - lon_g).^2 + (lat2 - lat_g).^2);
         
         % Smoothing if slope_param exists
@@ -186,23 +187,23 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
  
     function d = fd( p, instance ) 
         % The distance function, (needs polygons of coastline and islands)
-        if instance == 1
-            % When called from h func
-            % First polygon is full one, second one is sans ocean boundaries
-            d = dpoly( p,[polygon.outer;
-                             NaN NaN;
-                          polygon.inner],[polygon.mainland;
-                                          polygon.inner] );
-        else
-            % When called from distmesh2d
-            % Both polygons are full ones
-            d = dpoly( p,[polygon.outer;
-                             NaN NaN;
-                          polygon.inner],[polygon.outer;
-                                              NaN NaN;
-                                          polygon.inner]); 
-        end
-        return ;
+         if instance == 1
+             % When called from h func
+             % First polygon is full one, second one is sans ocean boundaries
+             d = dpoly( p,[polygon.outer;
+                              NaN NaN;
+                           polygon.inner],[polygon.mainland;
+                                           polygon.inner] );
+         else
+             % When called from distmesh2d
+             % Both polygons are full ones
+             d = dpoly( p,[polygon.outer;
+                              NaN NaN;
+                           polygon.inner],[polygon.outer;
+                                               NaN NaN;
+                                           polygon.inner]); 
+         end
+         return ;
     end
 
     function h = fh( p )
