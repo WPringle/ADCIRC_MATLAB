@@ -50,8 +50,9 @@ if exist([f13file '_rev'],'file')
     % Read in new points
     idx_g = dlmread([f13file '_rev'],'',9,0); idx_g = idx_g(:,1);
     % rewrite the spng_lat_lon file
-    dlmwrite('spng_lat_lon_rev',pv(idx_g,:),'precision',7);
-    %
+    if ~exist('spng_lat_lon_rev','file')
+        dlmwrite('spng_lat_lon_rev',fliplr(pv(idx_g,:)),'precision',7);
+    end
     % Change idx in sponge
     for op = 1:length(sbnd)
         sponge(op).idx = intersect(sponge(op).idx,idx_g);
