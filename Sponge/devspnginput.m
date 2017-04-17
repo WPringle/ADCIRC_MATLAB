@@ -41,7 +41,7 @@ f13file = ['fort.13.sp_F' num2str(F) '_R' num2str(rat)];
 % make the fort13 with the sponge coefficients
 [sponge,opedat,boudat,pv,B] = makefort13sponge(f13file,f14file,period,...
                                            frac,spngtype,F,rat,sbnd,write);
-if write == 0
+if write == 1
     return;
 end
 
