@@ -1,9 +1,11 @@
 function [p,t] = General_distmesh_fp(meshfile,contourfile,bathyfile,bbox,...
-      edgelength,dist_param,wl_param,slope_param,bounds,minL,itmax,plot_on)
+      edgelength,dist_param,wl_param,slope_param,ub,minL,itmax,plot_on)
 % Function for calling grid generator for any general region in the world
-% Inputs:  mapfile    : filename and path of the map created in SMS to read in
-%          bathyfile  : filename of the bathymetric dataset (the version here
-%                       is for a global dataset in netcdf format)
+% Inputs:  meshfile   : filename of the ADCIRC mesh created for the
+%                       oceanside
+%          contourfile: filename of the shapefile of the upper bound contour
+%          bathyfile  : filename of the bathymetric dataset (the version
+%                       here is for one created from a DEM in gdal)
 %          edglength  : The minimum (and initial) edgelength of the mesh
 %          dist_param : The percent that the edgelength should change 
 %                       with distance. Set 0 to ignore
@@ -28,26 +30,40 @@ function [p,t] = General_distmesh_fp(meshfile,contourfile,bathyfile,bbox,...
 % Reference for wavelength and slope function:
 % Lyard, F., Lefevre, F., Letellier, T., & Francis, O. (2006). 
 % Modelling the global ocean tides: modern insights from FES2004. 
-% Ocean Dynamics, 56(5–6), 394–415. http://doi.org/10.1007/s10236-006-0086-x
+% Ocean Dynamics, 56(5ï¿½6), 394ï¿½415. http://doi.org/10.1007/s10236-006-0086-x
 % 
     %% Read the mesh
-    [~,pv,~,~,boudat,~] = readfort14(meshfile);
-    % Make boudat into segment and polygons based on min criteria
+    [ev,pv,~,opendat,boudat,~] = readfort14(meshfile);
+    % initialise segment and polygon
     segment = []; polygon = [];
+    [etbv,~,~,~] = extdom_edges( ev, pv ) ;% the edges in the external domain
+    iedbeg  = knnsearch(pv(etbv(1,:),:),pv(opendat.nbdv(1),:)); % find which edge to start
+    polygon = extdom_polygon( etbv, pv, iedbeg, 1, 2 ) ; % find the outer polygon defining the domain
+    polygon = [polygon; NaN NaN];
+    % Make boudat into segment and polygons based on min criteria
     for i = 1:boudat.nbou
         nodes = boudat.nbvv(1:boudat.nvell(i),i);
         if boudat.nvell(i) > minL
             % Add to segment 
-            segment = [segment; pv(nodes,:)];
-        else
-            % Add to polygon
-            polygon = [polygon; NaN NaN; pv(nodes,:)];
+            segment = [segment;NaN NaN; pv(nodes,:)];
+        %else
+        %    % Add to polygon
+            if ~any(polygon(:,1) == pv(nodes(1),1))
+                if ~ispolycw(pv(nodes,1),pv(nodes,2))
+                    polygon = [polygon; NaN NaN; pv(nodes,:)];
+                else
+                    polygon = [polygon; NaN NaN; flipud(pv(nodes,:))];
+                end
+            end
         end
     end
+    polygon = [polygon;NaN NaN];
     % make fixp = to the segment
     fixp  = segment; 
+    % get rid of the nans
+    fixp=fixp(~any(isnan(fixp),2),:);
     ini_p = [];
-    
+
     %% Read floodplain contour
     % add floodplain contour to segment   
     S = shaperead(contourfile);
@@ -58,27 +74,22 @@ function [p,t] = General_distmesh_fp(meshfile,contourfile,bathyfile,bbox,...
     for s = 1:length(S)
         x_n = S(s).X; y_n = S(s).Y; 
         x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
-        % Get only the polygons which fit within bbox & and are larger than
-        % specified number of points
-        nn = 0; I = [];
-        for s = 1:length(S)
-            x_n = S(s).X; y_n = S(s).Y; 
-            x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
-            m_d = mean(abs(diff([x_n; y_n],[],2)),2); m_d = norm(m_d,2);
-            % Ignore small length shapes
-            if length(x_n) < h0/m_d*7; continue; end
-            I = find(x_n > bbox(1,1) & x_n < bbox(1,2) & ...
-                     y_n > bbox(2,1) & y_n < bbox(2,2));
-            % Ignore small length shapes within bbox
-            if length(I) < h0/m_d*7; continue; end        
-            segment = [segment; x_n(I) y_n(I)];
-        end
+        m_d = mean(abs(diff([x_n; y_n],[],2)),2); m_d = norm(m_d,2);
+        % Ignore small length shapes
+        if length(x_n) < edgelength/m_d*7; continue; end
+        I = find(x_n > bbox(1,1) & x_n < bbox(1,2) & ...
+                 y_n > bbox(2,1) & y_n < bbox(2,2));
+        % Ignore small length shapes within bbox
+        if length(I) < edgelength/m_d*7; continue; end        
+        segment = [segment; NaN NaN; x_n(I)' y_n(I)'];
     end
-    
+    % Build kdtree with segment points for distance calc algorithm 
+    mdl = KDTreeSearcher(segment); 
+
     %% Read DEM and get bathy interpolant for fd
     lon = double(ncread(bathyfile,'lon'));
     lat = double(ncread(bathyfile,'lat'));  
-    bathy = double(ncread(bathyfile,'bathy'));  
+    bathy = double(ncread(bathyfile,'Band1'));  %Band1 if created in gdal
     I = find(lon > bbox(1,1) & lon < bbox(1,2));
     J = find(lat > bbox(2,1) & lat < bbox(2,2));
     lon = lon(I); lat = lat(J); bathy = bathy(I,J);
@@ -140,53 +151,56 @@ function [p,t] = General_distmesh_fp(meshfile,contourfile,bathyfile,bbox,...
     end
 
     % Get min of slope and wavelength, setting equal to hh_m
-    if dist_param > 0
-        hh_m = min(hh(:,:,2:end),[],3); 
-    else
-        hh_m = min(hh(:,:,1:end),[],3); 
-    end
-
-    % Now convert hh_m into degrees from meters 
-    % (estimate from 45 deg azimuth)
-    [lon2,lat2,~] = m_fdist(lon_g,lat_g,45,hh_m);
-    lon2(lon2 > 180) = lon2(lon2 > 180) - 360;
-    hh_m = sqrt((lon2 - lon_g).^2 + (lat2 - lat_g).^2);
-
-    % Smoothing if slope_param exists
-    if slope_param > 0 
-        %
-        %OPTIONS.Weight = 'cauchy';
-        %OPTIONS.MaxIter = 100;
-        %[hh_m1,S,EXITFLAG] = smoothn(hh_m,'robust',OPTIONS);
-        %nx = 2*round((size(hh_m,2)*0.005+1)/2)-1;
-        %nz = 2*round((size(hh_m,1)*0.005+1)/2)-1;
-        %hh_m2 = savitzkyGolay2D_rle_coupling(size(hh_m,2),size(hh_m,1),...
-        %                                     hh_m,nx,nz,2);
-        I = bad_length_change(hh_m,dist_param*2); nn_s = 1;
-        while length(I)/length(hh_m(:)) > 0.005
-            hh_m1 = smooth2a(hh_m,nn_s,nn_s);
-            nn_s = nn_s + 1;
-            I = bad_length_change(hh_m1,dist_param*2);
-            if nn_s > max(size(hh_m))*0.005
-                break;
+    if wl_param > 0 || slope_param > 0
+        if dist_param > 0 
+            hh_m = min(hh(:,:,2:end),[],3); 
+        else
+            hh_m = min(hh(:,:,1:end),[],3); 
+        end
+        % Now convert hh_m into degrees from meters 
+        % (estimate from 45 deg azimuth)
+        [lon2,lat2,~] = m_fdist(lon_g,lat_g,45,hh_m);
+        lon2(lon2 > 180) = lon2(lon2 > 180) - 360;
+        hh_m = sqrt((lon2 - lon_g).^2 + (lat2 - lat_g).^2);
+        clear lon2 lat2
+        % Smoothing if slope_param exists
+        if slope_param > 0 
+            %
+            %OPTIONS.Weight = 'cauchy';
+            %OPTIONS.MaxIter = 100;
+            %[hh_m1,S,EXITFLAG] = smoothn(hh_m,'robust',OPTIONS);
+            %nx = 2*round((size(hh_m,2)*0.005+1)/2)-1;
+            %nz = 2*round((size(hh_m,1)*0.005+1)/2)-1;
+            %hh_m2 = savitzkyGolay2D_rle_coupling(size(hh_m,2),size(hh_m,1),...
+            %                                     hh_m,nx,nz,2);
+            I = bad_length_change(hh_m,dist_param*2); nn_s = 1;
+            while length(I)/length(hh_m(:)) > 0.005
+                hh_m1 = smooth2a(hh_m,nn_s,nn_s);
+                nn_s = nn_s + 1;
+                I = bad_length_change(hh_m1,dist_param*2);
+                if nn_s > max(size(hh_m))*0.005
+                    break;
+                end
+            end
+            if exist('hh_m1','var')
+                hh_m = hh_m1;
             end
         end
-        if exist('hh_m1','var')
-            hh_m = hh_m1;
+        % Get min of all the criteria
+        if dist_param > 0
+            hh_m = min(hh_m,hh(:,:,1)); 
         end
+    else
+        hh_m = squeeze(hh);
     end
-    % Get min of all the criteria
-    if dist_param > 0
-        hh_m = min(hh_m,hh(:,:,1)); 
-    end
-    hh_m(hh_m < edgelength) = edgelength;
+    hh_m(hh_m < edgelength) = edgelength;    
     % Make the overall interpolant
     F = griddedInterpolant(lon_g,lat_g,hh_m,'linear');
-    clear lon2 lat2 hh
+    clear hh
     
     %% Call distmesh        
     [p,t] = distmesh2d(@fd,@fh,...   
-                       edgelength,bounding_box,ini_p,fixp,itmax,plot_on);
+                       edgelength,bbox',ini_p,fixp,itmax,plot_on);
     if plot_on == 1
         % Plot the map
         hold on
@@ -194,12 +208,13 @@ function [p,t] = General_distmesh_fp(meshfile,contourfile,bathyfile,bbox,...
         m_plot(polygon.inner(:,1),polygon.inner(:,2))
     end
  
-    function d = fd( p, instance ) 
+    function d = fd( p, instance )
         % The distance function 
         % needs segment to get distance
         % smallpolygons to make sure nodes inside them are discarded
         % Fb and bounds to test whether depth in desired range
-        d = dpoly_fp(p,segment,polygon,Fb,bounds);
+        % NOTE: Pass mdl here instead of segment
+        d = dpoly_fp2(p,mdl,polygon,Fb,ub);
         return ;
     end
 

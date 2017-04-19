@@ -1,75 +1,63 @@
-function [d,iloc]= dpoly_fp(p,ps,pv,F,bounds)
+function d = dpoly_fp(p,mdl,pv,F,ub)
 
 %   Copyright (C) 2004-2012 Per-Olof Persson. See COPYRIGHT.TXT for details.
 
 % p are the mesh points
-% ps is the segment for the contours in floodplain (e.g. 0 m and 5 m
-% contours) 
+% mdl kdtree of segment points
 % pv is the polygon of small islands to ignore mesh inside of them
 % F is the interpolant for the DEM
-% bounds(1) is the lower bound of the bathy (e.g. 0 m)
-% bounds(2) is the upper bound of the bathy (e.g. 5 m)
-
+% ub is the upper bound of the bathy (e.g. 5 m)
 % d is the distance from point p to closest point on the contour ps (d is
-% negative if the point gives bathy within the bounds specified)
+% negative if the point gives bathy below the upper bounds and outside the
+% polygon of the oceanside mesh)
 
-np=size(p,1) ;
-if ~isempty(ps)
-    %nvs=size(pv,1)-1;
-    nvs=size(ps,1)-1;
-    memneed = np*nvs*8/10^9  ; % assume real number  
-    if isempty(gcp('nocreate'))
-        %disp('dsegment serial')
-        maxmem = 4; % 4 Gb
-        if ( memneed < maxmem ) % 8 Gb
-           %ds=dsegment(p,pv) ;
-           ds=dsegment(p,ps) ;
-           [d,~]=min(ds,[],2);
-        else
-           csz = ceil(maxmem*10^9/(8*nvs)) ;
-
-           ires = mod( np, csz) ;
-           if ( ires )
-               ichunck = [0:csz:np np] ;
-           else
-               ichunck = [0:csz:np] ; 
-           end
-
-           d = zeros(np,1) ;
-           iloc = zeros(np,1) ; 
-           nch = length(ichunck) ;
-           for ic = 1: nch - 1
-               % ic
-               ibeg = ichunck(ic) + 1 ;
-               iend = ichunck(ic+1)   ;
-
-               pp = p(ibeg:iend,:) ; 
-
-               %dsc = dsegment(pp,pv) ;
-               dsc = dsegment(pp,ps) ;
-               [d(ibeg:iend),iloc(ibeg:iend)] = min( dsc, [], 2) ;  
-           end
-        end
-    else
-        %disp('dsegment parallel')
-        d = zeros(length(p),1); iloc = zeros(length(p),1);
-        parfor ii = 1:np
-            ds              = dsegment(p(ii,:),ps);
-           [d(ii),iloc(ii)] = min(ds);
-        end
-    end
+np = size(p,1) ;
+if isempty(gcp('nocreate'))
+    % SERIAL
+    
+    % Get distances to segment
+    [~,d] = knnsearch(mdl,p);
+    
+    % Get the out polygon
+    in = ~InPolygon(p(:,1),p(:,2),pv(:,1),pv(:,2));
 else
-    % make distance very large as must be very far from any boundaries
-    iloc = zeros(length(p),1);
-    d = 1d8*ones(length(p),1);
+    % PARALLEL
+    
+    % Get distances to segment
+    d = zeros(np,1);
+    Pool = gcp(); num_p = Pool.NumWorkers;
+    for idx = 1:num_p
+        ns = int64((idx-1)*np/num_p)+1;
+        ne = int64(idx*np/num_p);
+        f(idx) = parfeval(Pool,@knnsearch,2,...
+            mdl,p(ns:ne,:));
+    end
+    for idx = 1:num_p
+        [idx_t, ~, d_t] = fetchNext(f); % Get results into a cell array
+        ns = int64((idx_t-1)*np/num_p)+1;
+        ne = int64(idx_t*np/num_p);
+        d(ns:ne) = d_t;
+    end
+    
+    % Get the out polygon
+    in = zeros(np,1); 
+    for idx = 1:num_p
+        ns = int64((idx-1)*np/num_p)+1;
+        ne = int64(idx*np/num_p);
+        f(idx) = parfeval(Pool,@InPolygon,1,...
+            p(ns:ne,1),p(ns:ne,2),pv(:,1),pv(:,2));
+    end
+    for idx = 1:num_p
+        [idx_t, in_t] = fetchNext(f); % Get results into a cell array
+        ns = int64((idx_t-1)*np/num_p)+1;
+        ne = int64(idx_t*np/num_p);
+        in(ns:ne) = ~in_t;
+    end
 end
-% Check if in the bounds or not
-% Check to see if in small polygon
-in = ~InPolygon(p(:,1),p(:,2),pv(:,1),pv(:,2));
+
 % Get interpolant
 bathy = F(p);
-% make in == 1 if depth is within the bounds
-in(bathy > bounds(1) & bathy < bounds(2)) = 1;
+% make in == 0 if bathy is above upper bounds
+in(bathy > ub) = 0;
+% d is negative if outside polygon and below upper bounds
 d=(-1).^(in).*d;
-%disp('dpoly out')
-%

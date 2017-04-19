@@ -43,6 +43,10 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
         polygon = Read_shapefile( mapfile, map_num, 7, edgelength, plot_on );
     end
 
+    %% Make the kdtree for the polygons
+    mdl1 = KDTreeSearcher([polygon.mainland; polygon.inner]); 
+    mdl0 = KDTreeSearcher([polygon.outer; NaN NaN; polygon.inner]); 
+
     %% Make bounding box
     bounding_box = [min(polygon.outer(:,1)), min(polygon.outer(:,2)); ...
                     max(polygon.outer(:,1)), max(polygon.outer(:,2))];     
@@ -177,7 +181,7 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     %% Call distmesh        
     [p,t] = distmesh2d(@fd,@fh,...   
                        edgelength,bounding_box,ini_p,fixp,itmax,plot_on);
-    %@fci,
+
     if plot_on == 1
         % Plot the map
         hold on
@@ -192,16 +196,13 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
              % First polygon is full one, second one is sans ocean boundaries
              d = dpoly( p,[polygon.outer;
                               NaN NaN;
-                           polygon.inner],[polygon.mainland;
-                                           polygon.inner] );
+                           polygon.inner],mdl1 );
          else
              % When called from distmesh2d
              % Both polygons are full ones
              d = dpoly( p,[polygon.outer;
                               NaN NaN;
-                           polygon.inner],[polygon.outer;
-                                               NaN NaN;
-                                           polygon.inner]); 
+                           polygon.inner],mdl0); 
          end
          return ;
     end
