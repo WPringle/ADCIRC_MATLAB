@@ -49,7 +49,7 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     end
     
     %% Make bounding box
-    if exist('polygon','var')
+    if ~isempty(polygon)
         bounding_box = [min(polygon.outer(:,1)), min(polygon.outer(:,2)); ...
                         max(polygon.outer(:,1)), max(polygon.outer(:,2))]; 
     else
