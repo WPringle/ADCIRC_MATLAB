@@ -1,4 +1,4 @@
-function [p,t]=distmesh2d(fd,fh,h0,bbox,p,pfix,itmax,plot_on)
+function [p,t]=distmesh2d(fd,fh,h0,bbox,p,pfix,plot_on)
 %DISTMESH2D 2-D Mesh Generator using Distance Functions.
 %   [P,T]=DISTMESH2D(FD,FH,H0,BBOX,PFIX,plot_on)
 %
@@ -61,19 +61,12 @@ function [p,t]=distmesh2d(fd,fh,h0,bbox,p,pfix,itmax,plot_on)
 %   Copyright (C) 2004-2012 Per-Olof Persson. See COPYRIGHT.TXT for details.
 tic
 it = 1 ;
-% dxx = (bbox(2,1) - bbox(1,1)) ;
-% dyy = (bbox(2,2) - bbox(1,2)) ;
-%
-% deltat = h0/20 
-% itmax = max(dxx/deltat, dyy/deltat) ; 
-
-dptol=.0008; ttol=.1; Fscale=1.2; 
-% deltat = 0.0001 ; 
-deltat = 0.08 ;
-% deltat=.01 ;
 geps=.001*h0; deps=sqrt(eps)*h0;
-densityctrlfreq=30;
-
+densityctrlfreq = 25;
+ttol=.1; dptol = .001; Fscale=1.2; 
+dxx = (bbox(2,1) - bbox(1,1)) ;
+dyy = (bbox(2,2) - bbox(1,2)) ;
+L = (dxx*dyy)/h0^2;
 if isempty(p)
     %% 1. Create initial distribution in bounding box (equilateral triangles)
     [x,y]=meshgrid(bbox(1,1):h0:bbox(2,1),bbox(1,2):h0*sqrt(3)/2:bbox(2,2));
@@ -85,6 +78,10 @@ if isempty(p)
     r0=1./feval(fh,p).^2;                           % Probability to keep point
     max_r0 = 1/h0^2;    %max_r0 = max(r0);
     p=p(rand(size(p,1),1) < r0/max_r0,:);           % Rejection method
+    
+    % Saving the initial points
+    disp('saving initial mesh')
+    save('Ini_points.mat','p');
 end
 if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end     % Remove duplicated nodes
 pfix=unique(pfix,'rows'); nfix=size(pfix,1);
@@ -92,9 +89,13 @@ pfix=unique(pfix,'rows'); nfix=size(pfix,1);
 p=[pfix; p];                                         % Prepend fix points
 N=size(p,1);                                         % Number of points N
 
+% Set deltat based on an estimate mean of the edgelength
+deltat = h0*L/N/5; 
+itmax = ceil(max(dxx/deltat, dyy/deltat)); 
+
 %% Iterate
-count=0; prcq_o = 0;
-pold=inf;                                            % For first iteration
+count=0; %prcq_o = 0;
+pold = inf;                                          % For first iteration
 if plot_on == 1
     clf,view(2),axis equal,axis off
 end
@@ -102,14 +103,20 @@ toc
 while 1
   tic
   if mod(it,10) == 0
-    disp(sprintf('Iteration = %d',it)) ;    
+    disp(['Iteration =' num2str(it)]) ;    
   end
   count=count+1;
   
   % 3. Retriangulation by the Delaunay algorithm
-  if max(sqrt(sum((p-pold).^2,2))/h0)>ttol           % Any large movement?
-    pold=p;                                          % Save current positions
-    t=delaunayn(p);                                  % List of triangles
+  if max(sqrt(sum((p-pold).^2,2))/h0)> ttol          % Any large movement?
+    % ensure no repeated p
+    p = unique(p,'rows');
+    N = size(p,1);
+    pold = p;                                        % Save current positions
+    % center p to ensure qhull is well behaved
+    p_s = p - mean(p);
+    %
+    t=delaunayn(p_s);                                % List of triangles
     pmid=(p(t(:,1),:)+p(t(:,2),:)+p(t(:,3),:))/3;    % Compute centroids
     t=t(feval(fd,pmid,0)<-geps,:);                   % Keep interior triangles
     
@@ -121,49 +128,48 @@ while 1
     if plot_on == 1
         cla,patch('vertices',p,'faces',t,'edgecol','k','facecol',[.8,.9,1]);
         drawnow
-        if ~isempty(pfix)
-            hold on
-            movable = setdiff(p,pfix,'rows');
-            plot(movable(:,1),movable(:,2),'o');
-            hold off
-        end
-    else
-        % we cant see the output so lets plot to temporary file
-        if mod(it,10) == 0
-        	save('Temp_grid.mat','it','p','t');
-        end
     end
     %
   end
   
   % Getting element quality and check goodness
   tq = gettrimeshquan( p, t);
-  prcq = length(find(tq.qm > 0.6))/length(t);
-  if it > itmax/4 && (prcq > 0.999 || (mod(it,50) == 0 && prcq <= prcq_o))
+  mq_m = mean(tq.qm);
+  mq_l = prctile(tq.qm,0.1);
+  %prcq = length(find(tq.qm > 0.6))/length(t);
+  if mq_m > 0.95 && mq_l > 0.5 %prcq > 0.999 %|| (mod(it,10) == 0 && prcq <= prcq_o))
       endflag = remove_small_connectivity;
       if endflag == 0; continue; end 
-      disp('quality of mesh is good enough, exit')
+      disp([num2str(mq_m) ' ' num2str(mq_l) ': quality of mesh is good enough, exit'])
       break;
   end
-  if mod(it,50) == 0
-    prcq_o = prcq;
+
+  % Saving a temp mesh
+  if mod(it,10) == 0
+      disp(['mean quality is ' num2str(mq_m)])
+      disp(['0.1 prctile quality ' num2str(mq_l)])
+      save('Temp_grid.mat','it','p','t');
   end
   
   % 6. Move mesh points based on bar lengths L and forces F
   barvec=p(bars(:,1),:)-p(bars(:,2),:);              % List of bar vectors
   L=sqrt(sum(barvec.^2,2));                          % L = Bar lengths
   hbars=feval(fh,(p(bars(:,1),:)+p(bars(:,2),:))/2);
-  L0=hbars*Fscale*sqrt(sum(L.^2)/sum(hbars.^2));     % L0 = Desired lengths
+  L0=hbars*Fscale*median(L)/median(hbars); %sqrt(sum(L.^2)/sum(hbars.^2));     % L0 = Desired lengths
   
   % Density control - remove points that are too close
   if mod(count,densityctrlfreq)==0   
       if any(L0>2*L)
+        DL = length(setdiff(reshape(bars(L0>2*L,:),[],1),1:nfix));
+	    disp(['deleting ' num2str(DL) ' points'])
+	    %save(['Temp_del' num2str(it) '.mat'],'p','t','it');
         p(setdiff(reshape(bars(L0>2*L,:),[],1),1:nfix),:)=[];
         N=size(p,1); pold=inf;
         continue;
       end
   end
   
+  % Get the Forces based on L, L0 and bars to move mesh points
   F=max(L0-L,0);                                     % Bar forces (scalars)
   Fvec=F./L*[1,1].*barvec;                           % Bar forces (x,y components)
   Ftot=full(sparse(bars(:,[1,1,2,2]),ones(size(F))*[1,2,1,2],[Fvec,-Fvec],N,2));
@@ -223,14 +229,23 @@ end
 function endflag = remove_small_connectivity
     % Get node connectivity (look for 4)
     [ ~, ~, ~, nn, ~ ] = NodeConnect2D( t );
-    % Make sure they are not boundary nodes
-    d=feval(fd,p,0);
-    if isempty(find(nn' == 4 & d < -h0/2,1))
-        endflag = 1;
-    else
-        endflag = 0;
-        p(nn' == 4 & d < -h0/2,:) = [];
-        N=size(p,1); pold=inf;
+    endflag = 1;
+    while 1
+       % Make sure they are not boundary nodes
+       etbv = extdom_edges(t, p);
+       etbv = unique(etbv(:));
+       I = find(nn == 4);
+       nn = setdiff(I',etbv);
+       %d=feval(fd,p,0);
+       if isempty(nn)
+          break;
+       else
+          endflag = 0;
+          p(nn,:) = [];
+	      t = delaunay(p);
+          N=size(p,1); pold=inf;
+	      disp(['removed points ' num2str(length(nn)) ' due to small connectivity'])
+       end
     end
     return;
 end
@@ -254,34 +269,34 @@ function fix_interior_angles
     end
 end
    
-function fix_shitty_boundaries
-    [etbv,vxe,~,~] = extdom_edges( t, p ) ;
-    if length(etbv) == length(vxe);
-        % Boundaries are OK
-        return;
-    end
-    % Some boundaries are shitty
-    while ~isempty(etbv)
-        [~,~,ide] = extdom_polygon( etbv, p, 1, 1, 2 ) ;
-        % Now get the bad edge to check
-        [~,J] = find(etbv(2,ide(end)) == etbv);
-        J(J == ide(end)) = [];
-        for j = J'
-            % Get the bad polygon
-            [vso,idv,~] = extdom_polygon( etbv, pv, j, ipsbeg, ipsend ) ;
-            % Check if inside or outside..
-            vso_m = mean(vso);        % Compute centroids
-            dv = feval(fd,vso_m,0);    % Check if interior or exterior
-            if dv < -geps
-               % Interior, need to make triangle
-               t(end+1,:) = idv;
-            else
-               % Exterior, need to delete triangle
-               t = setdiff(t,idv,'rows','stable');
-            end              
-        end
-
-    end
-end
+% function fix_shitty_boundaries
+%     [etbv,vxe,~,~] = extdom_edges( t, p ) ;
+%     if length(etbv) == length(vxe);
+%         % Boundaries are OK
+%         return;
+%     end
+%     % Some boundaries are shitty
+%     while ~isempty(etbv)
+%         [~,~,ide] = extdom_polygon( etbv, p, 1, 1, 2 ) ;
+%         % Now get the bad edge to check
+%         [~,J] = find(etbv(2,ide(end)) == etbv);
+%         J(J == ide(end)) = [];
+%         for j = J'
+%             % Get the bad polygon
+%             [vso,idv,~] = extdom_polygon( etbv, pv, j, ipsbeg, ipsend ) ;
+%             % Check if inside or outside..
+%             vso_m = mean(vso);        % Compute centroids
+%             dv = feval(fd,vso_m,0);    % Check if interior or exterior
+%             if dv < -geps
+%                % Interior, need to make triangle
+%                t(end+1,:) = idv;
+%             else
+%                % Exterior, need to delete triangle
+%                t = setdiff(t,idv,'rows','stable');
+%             end              
+%         end
+% 
+%     end
+% end
 
 end

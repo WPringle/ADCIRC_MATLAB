@@ -13,8 +13,7 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
 %          slope_param: Parameter in slope function, (set 0 to ignore)
 %                       edgelength = 2*pi/slope_param*H/abs(grad(H)), 
 %                       where H is the bathymetric depth
-%          F          : optional interpolant for edgelength - NB: will 
-%                       overwrite the input parameters  
+%                   F : optional 
 %          plot_on    : choose whether to plot map and mesh during calc or
 %                       not (Yes = 1, No = 0)
 %          ini_p      : optional initial distribution of p
@@ -70,7 +69,7 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     
     %% Make edge function interpolant
     nn = 0; % Counter for different criteria
-    if (slope_param > 0 || wl_param > 0 || dist_param > 0) && isempty(F)
+    if slope_param > 0 || wl_param > 0 || dist_param > 0
         lon = double(ncread(bathyfile,'lon'));
         lat = double(ncread(bathyfile,'lat'));  
         bathy = double(ncread(bathyfile,'bathy'));  
@@ -96,7 +95,7 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
 %             bathy(K) = F(lon_g(K),lat_g(K));
 %             clear hz lat_s lon_s
 %         end
-        if dist_param > 0
+        if isempty(ini_p) && dist_param > 0
             nn = nn + 1;
             x_v = reshape(lon_g,[],1);
             y_v = reshape(lat_g,[],1);
@@ -170,7 +169,6 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
         % Make the overall interpolant
         F = griddedInterpolant(lon_g,lat_g,hh_m,'linear');
         clear lon2 lat2 hh
-        save('Edge_Interpolant.mat','F');
     end
 
     %% Call distmesh        

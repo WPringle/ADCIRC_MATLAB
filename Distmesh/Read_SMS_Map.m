@@ -11,8 +11,10 @@ fid = fopen(finputname) ;
 header = textscan(fid,'%s%s%s\n',1) ;
 if poly_num == 0
     % Just read basically the whole map when only one exists
-    header = textscan(fid,'%s%s%s',11) ;
-    disp([header{1} header{2} header{3}])
+    while ~strcmp(header{1},'NODE')
+        header = textscan(fid,'%s%s%s',1) ;
+        disp([header{1} header{2} header{3}])
+    end
 else
     nn = 0;
     while nn < poly_num
@@ -21,12 +23,14 @@ else
             nn = nn + 1;
         end
     end
-    header = textscan(fid,'%s%s%s',10) ;
-    disp([header{1} header{2} header{3}])
+    while ~strcmp(header{1},'NODE')
+        header = textscan(fid,'%s%s%s',1) ;
+        disp([header{1} header{2} header{3}])
+    end
 end
 %
 % Get NODES
-type = textscan(fid,'%s',1);
+type = header;
 if strcmp(type{1},'COVATTS')
     dummy = textscan(fid,'%s%s',1);
     type = textscan(fid,'%s',1);

@@ -1,4 +1,5 @@
-function polygon = Read_shapefile( finputname, bbox, min_length, h0, plot_on )
+function polygon = Read_shapefile( finputname, bbox, min_length, ...
+                                   h0, plot_on, polygon )
 % Read_shapefile: Reads a shapefile polygon on the coastline, extracting
 % the desired area out, and making the open ocean boundaries automatically
 
@@ -6,7 +7,7 @@ function polygon = Read_shapefile( finputname, bbox, min_length, h0, plot_on )
 % bbox    : the bounding box that we want to extract out
 % min_length : minimum length of points in polygon to accept 
 % plot_on :  plot the final polygon or not (=1 or =0)
-
+    
 %% Loop over all the filenames
 for fname = finputname
     % Read the structure
@@ -45,13 +46,28 @@ for fname = finputname
     end
 end
 
+if ~isempty(polygon)
+    bbox = polygon.outer;
+    open = 0;
+else
+    bbox = [bbox(1,1) bbox(1,2);
+            bbox(1,1) bbox(2,2);
+            bbox(2,1) bbox(2,2);
+            bbox(2,1) bbox(1,2);
+            bbox(1,1) bbox(1,2)];
+    open = 1;
+end
+
 %% Find the polygons which are wholey inside the bbox.. set as islands
-polygon.inner = [];
+polygon.inner = []; polygon.mainland = [];
 lb_num = 0; 
 for s = 1:length(SG)
     x_n = SG(s).X; y_n = SG(s).Y;
-    if min(x_n) > bbox(1,1) && max(x_n) < bbox(1,2) && ...
-       min(y_n) > bbox(2,1) && max(y_n) < bbox(2,2) 
+    x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
+    In = InPolygon(x_n,y_n,bbox(:,1),bbox(:,2));
+    if length(find(In == 1)) == length(x_n) 
+    %if min(x_n) > bbox(1,1) && max(x_n) < bbox(1,2) && ...
+    %   min(y_n) > bbox(2,1) && max(y_n) < bbox(2,2) 
         new_island = [x_n' y_n'];
         cw = ispolycw(new_island(:,1), new_island(:,2));
         if cw == 1
@@ -64,14 +80,61 @@ for s = 1:length(SG)
                              NaN NaN];    
         end
     else
-        lb_num = lb_num + 1;
-        lb_v(lb_num) = s;             
+        if open == 0
+            new_main = [x_n(In == 1)' y_n(In == 1)'];
+            if ~isempty(new_main)
+                if length(find(In == 1))/length(x_n) > 0.75
+                    % redo
+                    In = inpolygon(x_n,y_n,bbox(:,1),bbox(:,2));
+                    if length(find(In == 1)) == length(x_n) 
+                        new_island = [x_n' y_n'];
+                        cw = ispolycw(new_island(:,1), new_island(:,2));
+                        if cw == 1
+                            polygon.inner = [polygon.inner; ...
+                                             new_island; ...
+                                             NaN NaN];
+                        else
+                            polygon.inner = [polygon.inner; ...
+                                             flipud(new_island);...
+                                             NaN NaN];    
+                        end
+                    else
+                        new_main = [x_n(In == 1)' y_n(In == 1)'];
+                        polygon.mainland = [polygon.mainland; new_main; NaN NaN]; 
+                    end
+                else
+                    In = inpolygon(new_main(:,1),new_main(:,2),bbox(:,1),bbox(:,2));
+                    new_main = new_main(In == 1,:);
+                    if ~isempty(new_main)
+                        polygon.mainland = [polygon.mainland; new_main; NaN NaN]; 
+                    end
+                end
+            end
+        else
+            lb_num = lb_num + 1;
+            lb_v(lb_num) = s;
+        end
     end
 end
 
 % Now make outer polygon by stitching together ocean and mainland
 % boundaries in correct order
-polygon.mainland = []; polygon.outer = []; end_e = 2;
+% if open = 0 just make mainland
+if open == 0
+    if plot_on == 1 && ~isempty(polygon)
+        figure(1);
+        hold on
+        if ~isempty(polygon.inner)
+            plot(polygon.inner(:,1),polygon.inner(:,2))
+        end
+        if ~isempty(polygon.mainland)
+            plot(polygon.mainland(:,1),polygon.mainland(:,2))
+        end
+    end
+    return;
+end
+polygon.outer = []; 
+end_e = 2;
 % Get the starting lb for the longest shape within bbox
 mL = 0;
 for lbt = 1:length(lb_v)
@@ -159,7 +222,6 @@ if isempty(polygon.outer)
               bbox(1,1) bbox(2,2);
               bbox(1,2) bbox(2,2)]; 
 end
-
 %% Plot the map
 if plot_on == 1 && ~isempty(polygon)
     figure(1);
