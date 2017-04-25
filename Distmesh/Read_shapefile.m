@@ -210,7 +210,8 @@ while ~isempty(lb_v)
                 break;
             else
                 % start a new edge so need to add the the next corner in
-                polygon.outer(end+1,:) = add_corner(e,bbox);
+                segment = add_corner(polygon.outer(end,:),e,bbox);
+                polygon.outer(end+1:end+length(segment),:) = segment;
             end
         end
     end
@@ -269,17 +270,26 @@ function [edge,d] = find_edge_num(node,bbox)
                    node(1) - bbox(1,1)]);
 end
 
-function corner = add_corner(e,bbox)
+function corner = add_corner(poly_end,e,bbox)
 % find the current edge number, = 1 top, = 2 right, =3 bottom, = 4 left
     if e == 1
-        corner = [bbox(1,2) bbox(2,2)];
+        corner(:,1) = poly_end(1)-h0:-h0:bbox(1,2); corner(end,1) = bbox(1,2);
+        corner(:,2) = bbox(2,2);
+        %corner = [bbox(1,2) bbox(2,2)];
     elseif e == 2
-        corner = [bbox(1,2) bbox(2,1)];
+        corner(:,2) = poly_end(2)+h0:h0:bbox(2,1); corner(end,2) = bbox(2,1);
+        corner(:,1) = bbox(1,2); 
+        %corner = [bbox(1,2) bbox(2,1)];
     elseif e == 3
-        corner = [bbox(1,1) bbox(2,1)];
+        corner(:,1) = poly_end(1)+h0:h0:bbox(1,1); corner(end,1) = bbox(1,1);
+        corner(:,2) = bbox(2,1);
+        %corner = [bbox(1,1) bbox(2,1)];
     elseif e == 4
-        corner = [bbox(1,1) bbox(2,2)]; 
+        corner(:,2) = poly_end(2)-h0:-h0:bbox(2,2); corner(end,2) = bbox(2,2);
+        corner(:,1) = bbox(1,1); 
+        %corner = [bbox(1,1) bbox(2,2)]; 
     end
+    
 end
 
 function d = find_distance_to_corner(nodes,bbox)
