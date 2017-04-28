@@ -1,8 +1,9 @@
-function [vs,ids,ide] = extdom_polygon( etbv, pv, iedbeg, ipsbeg, ipsend )
+function [vs,ids,ide,error] = extdom_polygon( etbv, pv, iedbeg, ipsbeg, ipsend )
 %
 % Still very lousy
 % 
 ter = 1 ;
+error = 0;
 
 ipb  = ipsend ;
 ipst = ipsbeg ;
@@ -12,8 +13,12 @@ sk = 1 ;
 vs(sk,:) = pv(etbv(ipb,idcur),:) ;
 ids(sk) = etbv(ipb,idcur) ;
 while ( ter )
+    if length(ipst) > 1
+        error = 1;
+        break;
+    end
     ikk = etbv(ipst,idcur) ;
-   
+    
     ide(sk) = idcur ; 
     
     sk = sk + 1 ;

@@ -144,27 +144,29 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
             clear lon2 lat2 dx dy b_y b_x b_slope
         end
         
-        % Get min of slope and wavelength, setting equal to hh_m
-        if dist_param > 0
-            hh_m = min(hh(:,:,2:end),[],3); 
-        else
-            hh_m = min(hh(:,:,1:end),[],3); 
-        end
+        if slope_param > 0 || wl_param > 0
+            % Get min of slope and wavelength, setting equal to hh_m
+            if dist_param > 0
+                hh_m = min(hh(:,:,2:end),[],3); 
+            else
+                hh_m = min(hh(:,:,1:end),[],3); 
+            end
 
-        % Now convert hh_m into degrees from meters 
-        % (estimate from 45 deg azimuth)
-        [lon2,lat2,~] = m_fdist(lon_g,lat_g,45,hh_m);
-        lon2(lon2 > 180) = lon2(lon2 > 180) - 360;
-        hh_m = sqrt((lon2 - lon_g).^2 + (lat2 - lat_g).^2);
-        
-        % Smoothing if slope_param exists
-        if slope_param > 0 
-            nn_s = ceil(min(size(hh_m))*0.005);
-            hh_m = smooth2a(hh_m,nn_s,nn_s);
-        end
-        % Get min of all the criteria
-        if dist_param > 0
-            hh_m = min(hh_m,hh(:,:,1)); 
+            % Now convert hh_m into degrees from meters 
+            % (estimate from 45 deg azimuth)
+            [lon2,lat2,~] = m_fdist(lon_g,lat_g,45,hh_m);
+            lon2(lon2 > 180) = lon2(lon2 > 180) - 360;
+            hh_m = sqrt((lon2 - lon_g).^2 + (lat2 - lat_g).^2);
+
+            % Smoothing if slope_param exists
+            if slope_param > 0 
+                nn_s = ceil(min(size(hh_m))*0.005);
+                hh_m = smooth2a(hh_m,nn_s,nn_s);
+            end
+            % Get min of all the criteria
+            if dist_param > 0
+                hh_m = min(hh_m,hh(:,:,1)); 
+            end
         end
         hh_m(hh_m < edgelength) = edgelength;
         % Make the overall interpolant

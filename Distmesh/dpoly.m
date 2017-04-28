@@ -50,8 +50,8 @@ else
     for idx = 1:num_p
         ns = int64((idx-1)*np/num_p)+1;
         ne = int64(idx*np/num_p);
-        f(idx) = parfeval(Pool,@InPolygon,1,...
-                          p(ns:ne,1),p(ns:ne,2),pv(:,1),pv(:,2));
+        f(idx) = parfeval(Pool,@inpoly,1,p(ns:ne,:)',pv');  %InPolygon,1,...
+                          %p(ns:ne,1),p(ns:ne,2),pv(:,1),pv(:,2));
     end
     for idx = 1:num_p
         [idx_t, in_t] = fetchNext(f); % Get results into a cell array

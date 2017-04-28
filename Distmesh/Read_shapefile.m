@@ -63,7 +63,7 @@ lb_num = 0;
 for s = 1:length(SG)
     x_n = SG(s).X; y_n = SG(s).Y;
     x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
-    In = InPolygon(x_n,y_n,polygon.outer(:,1),polygon.outer(:,2));
+    In = inpoly([x_n',y_n']',polygon.outer');
     if length(find(In == 1)) == length(x_n) 
     %if min(x_n) > bbox(1,1) && max(x_n) < bbox(1,2) && ...
     %   min(y_n) > bbox(2,1) && max(y_n) < bbox(2,2) 
@@ -82,34 +82,7 @@ for s = 1:length(SG)
         if open == 0
             new_main = [x_n(In == 1)' y_n(In == 1)'];
             if ~isempty(new_main)
-                if length(find(In == 1))/length(x_n) > 0.75
-                    % redo
-                    In = inpolygon(x_n,y_n,...
-                                   polygon.outer(:,1),polygon.outer(:,2));
-                    if length(find(In == 1)) == length(x_n) 
-                        new_island = [x_n' y_n'];
-                        cw = ispolycw(new_island(:,1), new_island(:,2));
-                        if cw == 1
-                            polygon.inner = [polygon.inner; ...
-                                             new_island; ...
-                                             NaN NaN];
-                        else
-                            polygon.inner = [polygon.inner; ...
-                                             flipud(new_island);...
-                                             NaN NaN];    
-                        end
-                    else
-                        new_main = [x_n(In == 1)' y_n(In == 1)'];
-                        polygon.mainland = [polygon.mainland; new_main; NaN NaN]; 
-                    end
-                else
-                    In = inpolygon(new_main(:,1),new_main(:,2),...
-                                   polygon.outer(:,1),polygon.outer(:,2));
-                    new_main = new_main(In == 1,:);
-                    if ~isempty(new_main)
-                        polygon.mainland = [polygon.mainland; new_main; NaN NaN]; 
-                    end
-                end
+                polygon.mainland = [polygon.mainland; new_main; NaN NaN]; 
             end
         else
             lb_num = lb_num + 1;

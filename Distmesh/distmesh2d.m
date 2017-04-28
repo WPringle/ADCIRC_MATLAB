@@ -62,11 +62,13 @@ function [p,t]=distmesh2d(fd,fh,h0,bbox,p,pfix,plot_on)
 tic
 it = 1 ;
 geps=.001*h0; deps=sqrt(eps)*h0;
-densityctrlfreq = 25;
+densityctrlfreq = 30;
 ttol=.1; dptol = .001; Fscale=1.2; 
 dxx = (bbox(2,1) - bbox(1,1)) ;
 dyy = (bbox(2,2) - bbox(1,2)) ;
-L = (dxx*dyy)/h0^2;
+deltat = 0.2; 
+itmax = max(500,ceil(max(dxx/deltat, dyy/deltat))); 
+
 if isempty(p)
     %% 1. Create initial distribution in bounding box (equilateral triangles)
     [x,y]=meshgrid(bbox(1,1):h0:bbox(2,1),bbox(1,2):h0*sqrt(3)/2:bbox(2,2));
@@ -88,10 +90,6 @@ pfix=unique(pfix,'rows'); nfix=size(pfix,1);
 % return ; 
 p=[pfix; p];                                         % Prepend fix points
 N=size(p,1);                                         % Number of points N
-
-% Set deltat based on an estimate mean of the edgelength
-deltat = h0*L/N/5; 
-itmax = ceil(max(dxx/deltat, dyy/deltat)); 
 
 %% Iterate
 count=0; %prcq_o = 0;
@@ -169,6 +167,9 @@ while 1
       end
   end
   
+  % Determine delta_t by the current bar lengths
+  deltat = median(L)/5;
+  
   % Get the Forces based on L, L0 and bars to move mesh points
   F=max(L0-L,0);                                     % Bar forces (scalars)
   Fvec=F./L*[1,1].*barvec;                           % Bar forces (x,y components)
@@ -228,9 +229,9 @@ end
 
 function endflag = remove_small_connectivity
     % Get node connectivity (look for 4)
-    [ ~, ~, ~, nn, ~ ] = NodeConnect2D( t );
     endflag = 1;
     while 1
+       [ ~, ~, ~, nn, ~ ] = NodeConnect2D( t );
        % Make sure they are not boundary nodes
        etbv = extdom_edges(t, p);
        etbv = unique(etbv(:));
@@ -242,9 +243,9 @@ function endflag = remove_small_connectivity
        else
           endflag = 0;
           p(nn,:) = [];
-	      t = delaunay(p);
+          t = delaunay(p);
           N=size(p,1); pold=inf;
-	      disp(['removed points ' num2str(length(nn)) ' due to small connectivity'])
+          disp(['removed points ' num2str(length(nn)) ' due to small connectivity'])
        end
     end
     return;
