@@ -168,7 +168,7 @@ while 1
   end
   
   % Determine delta_t by the current bar lengths
-  deltat = median(L)/5;
+  %deltat = median(L)/5;
   
   % Get the Forces based on L, L0 and bars to move mesh points
   F=max(L0-L,0);                                     % Bar forces (scalars)

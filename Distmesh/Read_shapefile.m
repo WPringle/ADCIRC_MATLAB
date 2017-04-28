@@ -63,7 +63,13 @@ lb_num = 0;
 for s = 1:length(SG)
     x_n = SG(s).X; y_n = SG(s).Y;
     x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
-    In = inpoly([x_n',y_n']',polygon.outer');
+    if exist('inpoly','file') == 2
+        % m-file version
+        In = inpoly([x_n',y_n'],polygon.outer);
+    elseif exist('inpoly','file') == 3
+        % Mex version
+        In = inpoly([x_n;y_n],polygon.outer');
+    end
     if length(find(In == 1)) == length(x_n) 
     %if min(x_n) > bbox(1,1) && max(x_n) < bbox(1,2) && ...
     %   min(y_n) > bbox(2,1) && max(y_n) < bbox(2,2) 

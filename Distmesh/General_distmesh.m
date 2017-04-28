@@ -79,23 +79,23 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
         lon = lon(I); lat = lat(J); 
         bathy = -bathy(I,J); bathy(bathy < 0) = 0;
         [lon_g,lat_g] = ndgrid(lon,lat);
-%         if min(polygon.outer(:,2)) < -65
-%            % Need TPXO8
-%             filename = 'E:\Global_Data\TPXO8_TIDES/grid_tpxo8atlas_30_v1.nc';
-%             lon = ncread(filename,'lon_z');
-%             lat = ncread(filename,'lat_z');
-%             hz = ncread(filename,'hz');
-%             % Find cutoff lat
-%             lat_max = max(polygon.mainland(polygon.mainland(:,2) < -65,2));
-%             I = find(lon > min(polygon.outer(:,1)) & lon < max(polygon.outer(:,1)));
-%             J = find(lat > min(polygon.outer(:,2)) & lat < lat_max);
-%             lon = lon(I); lat = lat(J); hz = hz(J,I); hz(hz < 0) = 0;
-%             [lon_s,lat_s] = ndgrid(lon,lat);
-%             F = griddedInterpolant(lon_s,lat_s,hz','linear');
-%             K = find(lat_g < lat_max & bathy == 0);
-%             bathy(K) = F(lon_g(K),lat_g(K));
-%             clear hz lat_s lon_s
-%         end
+        if min(polygon.outer(:,2)) < -65
+           % Need TPXO8
+            filename = 'E:\Global_Data\TPXO8_TIDES/grid_tpxo8atlas_30_v1.nc';
+            lon = ncread(filename,'lon_z');
+            lat = ncread(filename,'lat_z');
+            hz = ncread(filename,'hz');
+            % Find cutoff lat
+            lat_max = max(polygon.mainland(polygon.mainland(:,2) < -65,2));
+            I = find(lon > min(polygon.outer(:,1)) & lon < max(polygon.outer(:,1)));
+            J = find(lat > min(polygon.outer(:,2)) & lat < lat_max);
+            lon = lon(I); lat = lat(J); hz = hz(J,I); hz(hz < 0) = 0;
+            [lon_s,lat_s] = ndgrid(lon,lat);
+            F = griddedInterpolant(lon_s,lat_s,hz','linear');
+            K = find(lat_g < lat_max & bathy == 0);
+            bathy(K) = F(lon_g(K),lat_g(K));
+            clear hz lat_s lon_s
+        end
         if dist_param > 0
             nn = nn + 1;
             x_v = reshape(lon_g,[],1);
