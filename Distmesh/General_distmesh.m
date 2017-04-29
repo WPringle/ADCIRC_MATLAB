@@ -64,6 +64,13 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
                                   edgelength, plot_on, polygon );
     end
     
+    % Smooth polygon
+    polygon.outer = smooth_coastline([NaN NaN;polygon.outer],1,5,plot_on);
+    polygon.mainland = smooth_coastline([NaN NaN;polygon.mainland],0,5,plot_on);
+    polygon.inner = smooth_coastline([NaN NaN;polygon.inner],1,5,plot_on);
+    polygon.outer(1,:) = []; polygon.mainland(1,:) = [];
+    polygon.inner(1,:) = []; polygon.inner(end+1,:) = [NaN NaN];
+    
     %% Make the kdtree for the polygons
     mdl1 = KDTreeSearcher([polygon.mainland; polygon.inner]); 
     mdl0 = KDTreeSearcher([polygon.outer; NaN NaN; polygon.inner]);     

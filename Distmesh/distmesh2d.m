@@ -108,7 +108,7 @@ while 1
   % 3. Retriangulation by the Delaunay algorithm
   if max(sqrt(sum((p-pold).^2,2))/h0)> ttol          % Any large movement?
     % ensure no repeated p
-    p = unique(p,'rows');
+    p = unique(p,'rows','stable');
     N = size(p,1);
     pold = p;                                        % Save current positions
     % center p to ensure qhull is well behaved
@@ -166,9 +166,6 @@ while 1
         continue;
       end
   end
-  
-  % Determine delta_t by the current bar lengths
-  %deltat = median(L)/5;
   
   % Get the Forces based on L, L0 and bars to move mesh points
   F=max(L0-L,0);                                     % Bar forces (scalars)
@@ -230,7 +227,7 @@ end
 function endflag = remove_small_connectivity
     % Get node connectivity (look for 4)
     endflag = 1;
-    while 1
+    %while 1
        [ ~, ~, ~, nn, ~ ] = NodeConnect2D( t );
        % Make sure they are not boundary nodes
        etbv = extdom_edges(t, p);
@@ -238,16 +235,16 @@ function endflag = remove_small_connectivity
        I = find(nn == 4);
        nn = setdiff(I',etbv);
        %d=feval(fd,p,0);
-       if isempty(nn)
-          break;
-       else
+       if ~isempty(nn)
+%          return;
+%       else
           endflag = 0;
           p(nn,:) = [];
-          t = delaunay(p);
+          %t = delaunay(p);
           N=size(p,1); pold=inf;
           disp(['removed points ' num2str(length(nn)) ' due to small connectivity'])
        end
-    end
+    %end
     return;
 end
 
