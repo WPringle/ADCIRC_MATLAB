@@ -19,7 +19,7 @@ for fname = finputname
     
     % Get only the polygons which fit within bbox & and are larger than
     % specified number of points
-    nn = 0; I = [];
+    nn = 0; I = []; L = 0;
     for s = 1:length(S)
         x_n = S(s).X; y_n = S(s).Y; 
         x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
@@ -34,6 +34,7 @@ for fname = finputname
            if length(xtemp) < h0/m_d*min_length; continue; end
            nn = nn + 1;
            I(nn) = s;
+           L = length(xtemp) + L;
         end
     end
     if ~isempty(S)
@@ -58,34 +59,45 @@ else
 end
 
 %% Find the polygons which are wholey inside the bbox.. set as islands
-polygon.inner = []; polygon.mainland = [];
-lb_num = 0; 
+polygon.inner = NaN(L+length(SG)-1,2); 
+polygon.mainland = [];
+lb_num = 0; ns = 1; ne = 0;
 for s = 1:length(SG)
     x_n = SG(s).X; y_n = SG(s).Y;
-    x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
-    if exist('inpoly','file') == 2
-        % m-file version
-        In = inpoly([x_n',y_n'],polygon.outer);
-    elseif exist('inpoly','file') == 3
-        % Mex version
-        In = inpoly([x_n;y_n],polygon.outer');
+    %x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
+    if min_length > 0
+        if exist('inpoly','file') == 2
+            % m-file version
+            In = inpoly([x_n(~isnan(x_n))',y_n(~isnan(y_n))'],polygon.outer);
+        elseif exist('inpoly','file') == 3
+            % Mex version
+            In = inpoly([x_n(~isnan(x_n));y_n(~isnan(y_n))],polygon.outer');
+        end
+    else
+        In = ones(length(x_n(~isnan(x_n))),1);
     end
-    if length(find(In == 1)) == length(x_n) 
+    if length(find(In == 1)) == length(x_n(~isnan(x_n)))
     %if min(x_n) > bbox(1,1) && max(x_n) < bbox(1,2) && ...
     %   min(y_n) > bbox(2,1) && max(y_n) < bbox(2,2) 
         new_island = [x_n' y_n'];
-        cw = ispolycw(new_island(:,1), new_island(:,2));
-        if cw == 1
-            polygon.inner = [polygon.inner; ...
-                             new_island; ...
-                             NaN NaN];
+        if min_length > 0
+            cw = ispolycw(new_island(:,1), new_island(:,2));
         else
-            polygon.inner = [polygon.inner; ...
-                             flipud(new_island);...
-                             NaN NaN];    
+            cw = 1;
         end
+        ne = ne + size(new_island,1);
+        if ne > size(polygon.inner,1)
+           polygon.inner = [polygon.inner; NaN(length(SG),2)];
+        end
+        if cw == 1
+            polygon.inner(ns:ne,:) = new_island;
+        else
+            polygon.inner(ns:ne,:) = flipud(new_island);    
+        end
+        ns = ne + 1;
     else
         if open == 0
+            x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
             new_main = [x_n(In == 1)' y_n(In == 1)'];
             if ~isempty(new_main)
                 polygon.mainland = [polygon.mainland; new_main; NaN NaN]; 
@@ -96,7 +108,7 @@ for s = 1:length(SG)
         end
     end
 end
-
+%polygon.inner(polygon.inner(:,1) == 0 & polygon.inner(:,2) == 0,:) = [];
 % Now make outer polygon by stitching together ocean and mainland
 % boundaries in correct order
 % if open = 0 just make mainland
@@ -252,20 +264,29 @@ end
 function corner = add_corner(poly_end,e,bbox,h0)
 % find the current edge number, = 1 top, = 2 right, =3 bottom, = 4 left
     if e == 1
-        corner(:,1) = poly_end(1)-h0:-h0:bbox(1,2); corner(end,1) = bbox(1,2);
-        corner(:,2) = bbox(2,2);
+        num = abs(poly_end(1) - bbox(1,2))/h0;
+        corner(:,1) = linspace(poly_end(1),bbox(1,2),num);
+        %corner(:,1) = poly_end(1)-h0:-h0:bbox(1,2); 
+        corner(end,1) = bbox(1,2); corner(:,2) = bbox(2,2);
         %corner = [bbox(1,2) bbox(2,2)];
     elseif e == 2
-        corner(:,2) = poly_end(2)+h0:h0:bbox(2,1); corner(end,2) = bbox(2,1);
-        corner(:,1) = bbox(1,2); 
+        %corner(:,2) = poly_end(2)+h0:h0:bbox(2,1); 
+        num = abs(poly_end(2) - bbox(2,1))/h0;
+        corner(:,2) = linspace(poly_end(2),bbox(2,1),num); 
+        corner(end,2) = bbox(2,1); corner(:,1) = bbox(1,2); 
         %corner = [bbox(1,2) bbox(2,1)];
     elseif e == 3
-        corner(:,1) = poly_end(1)+h0:h0:bbox(1,1); corner(end,1) = bbox(1,1);
+        num = abs(poly_end(1) - bbox(1,1))/h0;
+        corner(:,1) = linspace(poly_end(1),bbox(1,1),num); 
+        %corner(:,1) = poly_end(1)+h0:h0:bbox(1,1); 
+        corner(end,1) = bbox(1,1);
         corner(:,2) = bbox(2,1);
         %corner = [bbox(1,1) bbox(2,1)];
     elseif e == 4
-        corner(:,2) = poly_end(2)-h0:-h0:bbox(2,2); corner(end,2) = bbox(2,2);
-        corner(:,1) = bbox(1,1); 
+        num = abs(poly_end(2) - bbox(2,2))/h0;
+        corner(:,2) = linspace(poly_end(2),bbox(2,2),num); 
+        %corner(:,2) = poly_end(2)-h0:-h0:bbox(2,2); 
+        corner(end,2) = bbox(2,2); corner(:,1) = bbox(1,1); 
         %corner = [bbox(1,1) bbox(2,2)]; 
     end
     

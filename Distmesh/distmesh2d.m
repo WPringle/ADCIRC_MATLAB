@@ -212,7 +212,7 @@ inonflatel = setdiff(1:length(JJ),iflatel) ;
 t = t(inonflatel,:) ;
 
 % WP fix bad interior angle elements
-fix_interior_angles
+%fix_interior_angles
 
 % WP fix shitty boundaries
 %fix_shitty_boundaries

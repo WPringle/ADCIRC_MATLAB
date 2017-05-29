@@ -65,11 +65,15 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     end
     
     % Smooth polygon
-    polygon.outer = smooth_coastline([NaN NaN;polygon.outer],1,5,plot_on);
-    polygon.mainland = smooth_coastline([NaN NaN;polygon.mainland],0,5,plot_on);
-    polygon.inner = smooth_coastline([NaN NaN;polygon.inner],1,5,plot_on);
-    polygon.outer(1,:) = []; polygon.mainland(1,:) = [];
-    polygon.inner(1,:) = []; polygon.inner(end+1,:) = [NaN NaN];
+    polygon.outer = smooth_coastline(polygon.outer,5,plot_on);
+    polygon.mainland = smooth_coastline(polygon.mainland,5,plot_on);
+    polygon.inner = smooth_coastline(polygon.inner,5,plot_on);
+%     polygon.outer = smooth_coastline([NaN NaN;polygon.outer],1,5,plot_on);
+%     polygon.mainland(end,:) = []; polygon.inner(end,:) = [];
+%     polygon.mainland = smooth_coastline([NaN NaN;polygon.mainland],0,5,plot_on);
+%     polygon.inner = smooth_coastline([NaN NaN;polygon.inner],1,5,plot_on);
+%     polygon.outer(1,:) = []; polygon.mainland(1,:) = [];
+%     polygon.inner(1,:) = []; polygon.inner(end+1,:) = [NaN NaN];
     
     %% Make the kdtree for the polygons
     mdl1 = KDTreeSearcher([polygon.mainland; polygon.inner]); 
@@ -80,11 +84,13 @@ function [p,t] = General_distmesh(mapfile,bathyfile,edgelength,dist_param,...
     if (slope_param > 0 || wl_param > 0 || dist_param > 0) && isempty(F)
         lon = double(ncread(bathyfile,'lon'));
         lat = double(ncread(bathyfile,'lat'));  
-        bathy = double(ncread(bathyfile,'bathy'));  
         I = find(lon > min(polygon.outer(:,1)) & lon < max(polygon.outer(:,1)));
         J = find(lat > min(polygon.outer(:,2)) & lat < max(polygon.outer(:,2)));
         lon = lon(I); lat = lat(J); 
-        bathy = -bathy(I,J); bathy(bathy < 0) = 0;
+        bathy = double(ncread(bathyfile,'z',[I(1) J(1)],...
+                              [length(I) length(J)],[1 1]));  
+        %bathy = double(ncread(bathyfile,'bathy'));  
+        bathy = -bathy; bathy(bathy < 0) = 0;
         [lon_g,lat_g] = ndgrid(lon,lat);
         if min(polygon.outer(:,2)) < -65
            % Need TPXO8
