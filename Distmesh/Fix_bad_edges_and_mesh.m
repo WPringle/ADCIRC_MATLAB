@@ -11,9 +11,6 @@ function [ p , t ] = Fix_bad_edges_and_mesh( p , t )
 % Second, delete unecessary elements inside main mesh (iterative; slow)
 [p,t] = delete_elements_inside_main_mesh(p,t);
 
-% Delete uncessary elements outside main mesh again (fast)
-[p,t] = delete_elements_outside_main_mesh(p,t);
-
 disp('finished cleaning up mesh..')
 
 % Now move nodes in bad remaining elements (fast)
@@ -74,7 +71,7 @@ end
 t = t(nflag == 1,:);
 
 % delete disjoint nodes
-[p,t] = fixmesh(p,t); %,1d-6);
+[p,t] = fixmesh(p,t);
 
 end
 
@@ -137,6 +134,9 @@ while 1
     
     % delete disjoint nodes
     [p,t] = fixmesh(p,t);
+    
+    % Delete elements outside to ensure covergence
+    [p,t] = delete_elements_outside_main_mesh(p,t);
 end
 
 end
