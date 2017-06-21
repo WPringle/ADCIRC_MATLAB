@@ -1,7 +1,7 @@
-function [p,t] = General_distmesh_fp2(meshfile,contourfile,bathyfile,bbox,...
-                                      edgelength,dist_param,wl_param,...
-                                      slope_param,bounds,minL,itmax,...
-                                      plot_on,ini_p,fix_p,nscreen)
+function [p,t] = Distmesh2D_prep_coast_fp(meshfile,contourfile,bathyfile,...
+                                   bbox,edgelength,dist_param,wl_param,...
+                                   slope_param,bounds,minL,itmax,...
+                                   plot_on,ini_p,fix_p,nscreen)
 % Function for calling grid generator for any general region in the world
 % Inputs:  meshfile   : filename and path of mesh with mainland boundary
 %          contourfile: filename(s) of shape file(s) (must be a cell)
@@ -86,8 +86,8 @@ if ~isempty(meshfile)
         end
     end
     % make fixp = to the segment
-    fixp  = segment;
-    fixp  = fixp(~any(isnan(fixp),2),:);
+    fix_p  = segment;
+    fix_p  = fix_p(~any(isnan(fix_p),2),:);
     toc
 else
     polygon_struct = [];
@@ -109,20 +109,12 @@ else
     polygon_struct.outer = smooth_coastline(polygon_struct.outer,5,plot_on);
     polygon_struct.mainland = smooth_coastline(polygon_struct.mainland,5,plot_on);
     polygon_struct.inner = smooth_coastline(polygon_struct.inner,5,plot_on);
+    toc 
     
     % Plot the polygons
-    plot(polygon_struct.outer(:,1),polygon_struct.outer(:,2),'k.'); hold on;
-    plot(polygon_struct.inner(:,1),polygon_struct.inner(:,2),'m'); hold on;
-    plot(polygon_struct.mainland(:,1),polygon_struct.mainland(:,2),'r'); hold on;
-    toc
-    if plot_on == 1
+    if plot_on >= 1
         disp('Check bounding box...OK?'); pause;
     end
-end
-
-%% Create floodplain contour by querying DEM
-if ~isempty(meshfile)
-
 end
 
 %% Read DEM and build bathy interpolant for fd (for floodplain)
@@ -134,8 +126,12 @@ I = find(lon > bbox(1,1) & lon < bbox(1,2));
 J = find(lat > bbox(2,1) & lat < bbox(2,2));
 lon = lon(I); lat = lat(J);
 % read only part of the DEM necessary
-bathy = double(ncread(bathyfile,'bathy',[I(1) J(1)],...
-                     [length(I) length(J)],[1 1]));
+ncid = netcdf.open(bathyfile,'NC_NOWRITE');
+bathy = netcdf.getVar(ncid,2,[I(1) J(1)],[length(I) length(J)]);
+netcdf.close(ncid)
+%
+%double(ncread(bathyfile,'bathy',[I(1) J(1)],...
+%                     [length(I) length(J)],[1 1]));
 [lon_g,lat_g] = ndgrid(lon,lat);
 % Save the depth interpolant
 Fb = griddedInterpolant(lon_g,lat_g,bathy);
@@ -164,7 +160,7 @@ else %% Coastal Mesh
     % For distance function used to determine whether points and elements
     % are inside the region you want to mesh
     disp('Building KD-Tree (mdl0) with ocean boundary, mainland, and island segments...');
-    mdl0 = KDTreeSearcher([polygon_struct.outer;NaN NaN;polygon_struct.inner]); 
+    mdl0 = KDTreeSearcher([polygon_struct.outer; polygon_struct.inner]); 
     
     % Build distance from outer boundary interpolant 
     % (used to speed up distance evaluations). Note the difference from
@@ -177,7 +173,7 @@ else %% Coastal Mesh
     FOB = griddedInterpolant(lon_g,lat_g,dOB,'linear');
     
     % plot the distance function
-    if plot_on == 1
+    if plot_on == 2
         figure; contourf(lon_g,lat_g,dOB);
         clearvars x_v y_v dOB
     end
@@ -201,7 +197,7 @@ if dist_param > 0
     %figure; contourf(lon_g,lat_g,hh(:,:,1));
     clear x_v y_v d
     % Plot the edgelength function for distance
-    if plot_on == 1
+    if plot_on == 2
         figure;
         m_proj('Mercator','long',[bbox(1,1) bbox(1,2)],'lat',[bbox(2,1) bbox(2,2)])
         m_contourf(lon_g,lat_g,hh(:,:,1)); shading interp
@@ -219,9 +215,9 @@ if wl_param > 0
     g = 9.807;
     period = 12.42*3600; % M2 period in seconds
     % wavelength func
-    hh(:,:,nn) = period*sqrt(g*-bathy)/wl_param;
+    hh(:,:,nn) = period*sqrt(g*abs(bathy))/wl_param;
     % Plotting the wavelength edgelength function
-    if plot_on == 1
+    if plot_on == 2
         figure;
         m_proj('Mercator','long',[bbox(1,1) bbox(1,2)],'lat',[bbox(2,1) bbox(2,2)]);
         m_pcolor(lon_g,lat_g,real(hh(:,:,2))); shading interp
@@ -357,13 +353,13 @@ minLength = abs(111*1000*cos(avgLat)*edgelength);
 disp(['Minimum edge length is ',num2str(minLength),' meters.']);
     
 % Plotting the overall edgelength function
-if plot_on == 1
+if plot_on >= 1
     figure;
     m_proj('Mercator','long',[bbox(1,1) bbox(1,2)],'lat',[bbox(2,1) bbox(2,2)]);
     m_pcolor(lon_g,lat_g,hh_m); shading interp;
     m_grid('xtick',10,'tickdir','out','yaxislocation','left','fontsize',7);
-    title('Slope function'); colorbar; caxis([0 25]);
-    print('Slopefunction','-dpng','-r300')
+    title('Overall edgelength function'); colorbar;
+    print('Overall_edgelength_function.png','-dpng','-r300')
 end
 clear lon2 lat2
 
@@ -420,7 +416,6 @@ return;
                 d = dpoly_fp2(p,mdl0,polygon,floodplain_polygon,Fb,[]);
             else
                 d = dpoly(p,[polygon_struct.outer;
-                             NaN NaN;
                              polygon_struct.inner],mdl0);
             end
         elseif instance == 1 
@@ -430,7 +425,6 @@ return;
                 d = dpoly_fp2(p,mdl1,polygon,floodplain_polygon,[],[]);
             else
                 d = dpoly(p,[polygon_struct.outer;
-                             NaN NaN;
                              polygon_struct.inner],mdl1);
             end
         else
