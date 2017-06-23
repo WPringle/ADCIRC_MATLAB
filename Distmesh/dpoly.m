@@ -15,16 +15,7 @@ np = size(p,1) ;
 % If inpoly m file we need to get the edges to pass to it to avoid the
 % issues of NaNs
 if exist('inpoly','file') == 2
-    shpEnd = find(isnan(pv(:,1))); 
-    shpEnd = vertcat(0,shpEnd); 
-    edges = nan(length(pv(:,1))-length(shpEnd),2); 
-    count = 1; 
-    for j=1:length(shpEnd)-1 
-        endCount = count+length((shpEnd(j)+1:shpEnd(j+1)-2)); 
-        edges(count:endCount,:) = [(shpEnd(j)+1:shpEnd(j+1)-2)' ... 
-        (shpEnd(j)+2:shpEnd(j+1)-1)';shpEnd(j+1)-1 shpEnd(j)+1]; 
-        count = endCount+1; 
-    end
+    edges = Get_poly_edges( pv );
 end
 
 if isempty(gcp('nocreate'))

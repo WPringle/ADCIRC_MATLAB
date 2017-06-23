@@ -137,8 +137,9 @@ while 1
   % Getting element quality and check goodness
   tq = gettrimeshquan( p, t);
   mq_m = mean(tq.qm);
-  mq_l = prctile(tq.qm,1);
+  mq_l = prctile(tq.qm,0.5);
   if mq_m > 0.97 && mq_l > 0.5
+      nn = remove_small_connectivity(p,t); 
       if ~isempty(nn)
           disp(['deleting ' num2str(length(nn)) ' due to small connectivity'])
           p(nn,:)=[];
@@ -154,7 +155,7 @@ while 1
   if mod(it,nscreen) == 0
       disp(['number of nodes is ' num2str(length(p))])
       disp(['mean quality is ' num2str(mq_m)])
-      disp(['1 prctile quality ' num2str(mq_l)])
+      disp(['0.5 prctile quality ' num2str(mq_l)])
       save('Temp_grid.mat','it','p','t');
   end
   
@@ -207,6 +208,7 @@ while 1
   end
    
   if ( max(sqrt(sum(deltat*Ftot(d<-geps,:).^2,2))/h0) < dptol )
+      nn = remove_small_connectivity(p,t);
       if ~isempty(nn)
           disp(['deleting ' num2str(length(nn)) ' due to small connectivity'])
           p(nn,:)=[];
