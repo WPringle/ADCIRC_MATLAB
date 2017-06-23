@@ -1,7 +1,7 @@
 function [p,t] = Distmesh2D_prep_coast_fp(meshfile,contourfile,bathyfile,...
-                                   bbox,edgelength,dist_param,wl_param,...
-                                   slope_param,bounds,minL,itmax,...
-                                   plot_on,ini_p,fix_p,nscreen)
+                                 bbox,min_el,max_el,dist_param,wl_param,...
+                                 slope_param,bounds,minL,itmax,...
+                                 plot_on,ini_p,fix_p,nscreen)
 % Function for calling grid generator for any general region in the world
 % Inputs:  meshfile   : filename and path of mesh with mainland boundary
 %          contourfile: filename(s) of shape file(s) (must be a cell)
@@ -10,7 +10,8 @@ function [p,t] = Distmesh2D_prep_coast_fp(meshfile,contourfile,bathyfile,...
 %          bbox       : the bounding box to mesh within in following format:
 %                       [minlon maxlon;
 %                        minlat maxlat];
-%          edgelength : The minimum (and initial) edgelength of the mesh
+%          min_el     : The minimum (and initial) edgelength of the mesh
+%          max_el     : The maximum edgelength of the mesh
 %          dist_param : The fraction that the edgelength should change
 %                       with distance. Set 0 to ignore
 %          wl_param   : Parameter in wavelength function, (set 0 to ignore)
@@ -96,14 +97,7 @@ else
     tic
     disp('Reading in shapefile...')
     polygon_struct = Read_shapefile( contourfile, bbox, minL, ...
-        edgelength, 0, polygon );
-    % sometimes there's too much space between points on out...fill them in
-    % this densify's the outer polygon (fills gaps larger than half min el).
-    [latout,lonout] = interpm(polygon_struct.outer(:,2),...
-                              polygon_struct.outer(:,1),edgelength/2);
-    polygon_struct.outer = [];
-    polygon_struct.outer(:,1) = lonout;
-    polygon_struct.outer(:,2) = latout;
+                                     min_el, 0, polygon );
     
     % Smooth the polygon using a 5-point moving average
     polygon_struct.outer = smooth_coastline(polygon_struct.outer,5,plot_on);
@@ -130,8 +124,6 @@ ncid = netcdf.open(bathyfile,'NC_NOWRITE');
 bathy = netcdf.getVar(ncid,2,[I(1) J(1)],[length(I) length(J)]);
 netcdf.close(ncid)
 %
-%double(ncread(bathyfile,'bathy',[I(1) J(1)],...
-%                     [length(I) length(J)],[1 1]));
 [lon_g,lat_g] = ndgrid(lon,lat);
 % Save the depth interpolant
 Fb = griddedInterpolant(lon_g,lat_g,bathy);
@@ -162,21 +154,21 @@ else %% Coastal Mesh
     disp('Building KD-Tree (mdl0) with ocean boundary, mainland, and island segments...');
     mdl0 = KDTreeSearcher([polygon_struct.outer; polygon_struct.inner]); 
     
-    % Build distance from outer boundary interpolant 
-    % (used to speed up distance evaluations). Note the difference from
-    % edgefunction using instance 0 here
-    x_v = reshape(lon_g,[],1);
-    y_v = reshape(lat_g,[],1);
-    disp('Calculating the distance from the ocean boundary...')
-    dOB = fd( [x_v,y_v], 0 ) ; %dpoly([x_v,y_v],[polygon_struct.outer; NaN,NaN; polygon_struct.inner],mdl0);
-    dOB = reshape(dOB,length(I),[]);
-    FOB = griddedInterpolant(lon_g,lat_g,dOB,'linear');
-    
-    % plot the distance function
-    if plot_on == 2
-        figure; contourf(lon_g,lat_g,dOB);
-        clearvars x_v y_v dOB
-    end
+%     % Build distance from outer boundary interpolant 
+%     % (used to speed up distance evaluations). Note the difference from
+%     % edgefunction using instance 0 here
+%     x_v = reshape(lon_g,[],1);
+%     y_v = reshape(lat_g,[],1);
+%     disp('Calculating the distance from the ocean boundary...')
+%     dOB = fd( [x_v,y_v], 0 ) ; %dpoly([x_v,y_v],[polygon_struct.outer; NaN,NaN; polygon_struct.inner],mdl0);
+%     dOB = reshape(dOB,length(I),[]);
+%     FOB = griddedInterpolant(lon_g,lat_g,dOB,'linear');
+%     
+%     % plot the distance function
+%     if plot_on == 2
+%         figure; contourf(lon_g,lat_g,dOB);
+%         clearvars x_v y_v dOB
+%     end
 end
 
 %% Make edge function interpolant
@@ -193,7 +185,7 @@ if dist_param > 0
     % reshape back
     d = reshape(d,length(I),[]);
     % add into edge function
-    hh(:,:,nn) = edgelength - dist_param*d ;
+    hh(:,:,nn) = min_el - dist_param*d ;
     %figure; contourf(lon_g,lat_g,hh(:,:,1));
     clear x_v y_v d
     % Plot the edgelength function for distance
@@ -280,18 +272,6 @@ if slope_param > 0
     [b_y,b_x] = gradient(bathy,dy,dx);
     b_slope = sqrt(b_x.^2 + b_y.^2);
     
-    % Smooth slope using three point Shapiro filter fnum times
-    fnum = 1;
-    % add buffer
-    for n = 1:fnum
-        b_slope = [b_slope(:,1) b_slope b_slope(:,end)];
-        b_slope = [b_slope(1,:); b_slope; b_slope(end,:)];
-    end
-    % perform filter
-    for n = 1:fnum
-        b_slope = 0.25*(b_slope(:,1:end-2) + 2*b_slope(:,2:end-1) + b_slope(:,3:end));
-        b_slope = 0.25*(b_slope(1:end-2,:) + 2*b_slope(2:end-1,:) + b_slope(3:end,:));
-    end
     % slope func
     hh(:,:,nn) = 2*pi*bathy./b_slope/slope_param;
     clear lon2 lat2 dx dy b_y b_x b_slope
@@ -329,12 +309,6 @@ if wl_param > 0 || slope_param > 0
     lon2(lon2 > 180) = lon2(lon2 > 180) - 360;
     % get the actual distance
     hh_m = sqrt((lon2 - lon_g).^2 + (lat2 - lat_g).^2);
-  
-    % Smoothing if slope_param exists
-    if slope_param > 0 
-        nn_s = ceil(min(size(hh_m))*0.005);
-        hh_m = smooth2a(hh_m,nn_s,nn_s);
-    end
     
     % Get min of all the criteria
     if dist_param > 0
@@ -343,13 +317,40 @@ if wl_param > 0 || slope_param > 0
 else
     hh_m = squeeze(hh);
 end
-% min edgelength
-hh_m(hh_m < edgelength) = edgelength; 
+clear lon2 lat2 hh
+
+% Making sure edgelength not < minimum or > maximum allowable
+hh_m(hh_m < min_el) = min_el; 
+hh_m(hh_m > max_el) = max_el; 
 disp('Finalized edge function');
+
+if plot_on == 2
+    figure; contourf(lon_g,lat_g,hh_m); 
+    title('Before smoothing'); caxis([0,10*min_el]);colorbar;
+end
+% Smoothing edgelength function using the Lipschitz smoother from mesh2d
+disp('Triangulating the bathymetric grid...')
+x_v = reshape(lon_g,[],1); y_v = reshape(lat_g,[],1); 
+pdmy = [x_v,y_v]; clear x_v y_v; 
+tdmy = delaunay(pdmy(:,1),pdmy(:,2)); 
+% We limit slope to be dist_param on the diagonal
+hfun = reshape(hh_m,[],1); dhdx = dist_param/sqrt(2); 
+% Enforce lipschitz continuity 
+% to vary the gradient no more than the dist_param
+[hfun,flag] = limhfn2(pdmy,tdmy,hfun,dhdx); 
+if ~flag
+   disp('Warning: was not able to satisfy smoothing criteria = dist_param')
+end
+hh_m = reshape(hfun,length(I),[]);
+clear hfun pv pdmy tdmy % free memory 
+if plot_on == 2
+    figure; contourf(lon_g,lat_g,hh_m); 
+    title('After Lipshitz smooth'); caxis([0,10*min_el]);colorbar;
+end
 
 % Showing the min edgelength in meters
 avgLat = mean(mean(lat_g));
-minLength = abs(111*1000*cos(avgLat)*edgelength);
+minLength = abs(111*1000*cos(avgLat)*min_el);
 disp(['Minimum edge length is ',num2str(minLength),' meters.']);
     
 % Plotting the overall edgelength function
@@ -361,31 +362,39 @@ if plot_on >= 1
     title('Overall edgelength function'); colorbar;
     print('Overall_edgelength_function.png','-dpng','-r300')
 end
-clear lon2 lat2
 
 % Make the overall interpolant
 disp('Building the finalized edge function interpolant...')
 F = griddedInterpolant(lon_g,lat_g,hh_m,'linear');
 disp('Built the finalized edge function interpolant');
 toc
-clear hh
+clear hh_m lon_g lat_g
 
 %% Call the distmesh iteration routine 
 disp('Entering DistMesh2d');
 close all;
-[p,t] = distmesh2d(@fd,@fh,edgelength,bbox',ini_p,fix_p,itmax,...
-                   plot_on,nscreen,polygon_struct,FOB);
+[p,t] = distmesh2d(@fd,@fh,min_el,bbox',ini_p,fix_p,itmax,...
+                   plot_on,nscreen);
 disp('Exiting Distmesh2d.m');
 
-%% remove portion of the mesh that exceeds your distance AND depth criteria
+%% Remove portion of the mesh that exceeds your distance AND depth criteria
 if ~isempty(meshfile)
     disp('Trimmming mesh...')
     [p,t] = trim_mesh(p,t);
 end
 
-%% fixing up the mesh automatically
+%% Fixing up the mesh automatically
 disp('Fixing mesh...');
 [p,t] = Fix_bad_edges_and_mesh(p,t);
+tq = gettrimeshquan( p, t);
+mq_m = mean(tq.qm);
+mq_l = prctile(tq.qm,0.1);
+disp(['number of nodes is ' num2str(length(p))])
+disp(['mean quality is ' num2str(mq_m)])
+disp(['0.1 prctile quality ' num2str(mq_l)])   
+if plot_on >= 1 
+    simpplot(p,t);
+end
 %
 return;
 %%
@@ -398,7 +407,7 @@ return;
         dis = fd(pmid,2);
         t = t(dis < 0,:);   % Keep interior triangle
         [p,t] = fixmesh(p,t); % clean up disjoint vertices.
-        if plot_on == 1
+        if plot_on >= 1
             simpplot(p,t);
         end
     end

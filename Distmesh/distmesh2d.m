@@ -137,8 +137,14 @@ while 1
   % Getting element quality and check goodness
   tq = gettrimeshquan( p, t);
   mq_m = mean(tq.qm);
-  mq_l = prctile(tq.qm,0.1);
+  mq_l = prctile(tq.qm,1);
   if mq_m > 0.97 && mq_l > 0.5
+      if ~isempty(nn)
+          disp(['deleting ' num2str(length(nn)) ' due to small connectivity'])
+          p(nn,:)=[];
+          N = size(p,1); pold=inf;
+          continue;
+      end
       disp([num2str(mq_m) ' ' num2str(mq_l) ...
             ': quality of mesh is good enough, exit'])
       break;  
@@ -148,7 +154,7 @@ while 1
   if mod(it,nscreen) == 0
       disp(['number of nodes is ' num2str(length(p))])
       disp(['mean quality is ' num2str(mq_m)])
-      disp(['0.1 prctile quality ' num2str(mq_l)])
+      disp(['1 prctile quality ' num2str(mq_l)])
       save('Temp_grid.mat','it','p','t');
   end
   
@@ -189,11 +195,24 @@ while 1
   % 8. Termination criterion: All interior nodes move less than dptol (scaled)
   it = it + 1 ;
   if ( it > itmax )
+      nn = remove_small_connectivity(p,t);
+      if ~isempty(nn)
+          disp(['deleting ' num2str(length(nn)) ' due to small connectivity'])
+          p(nn,:)=[];
+          N = size(p,1); pold=inf;
+          continue;
+      end
       disp('too many iterations, exit')
       break ; 
   end
    
   if ( max(sqrt(sum(deltat*Ftot(d<-geps,:).^2,2))/h0) < dptol )
+      if ~isempty(nn)
+          disp(['deleting ' num2str(length(nn)) ' due to small connectivity'])
+          p(nn,:)=[];
+          N = size(p,1); pold=inf;
+          continue;
+      end
       disp('no movement of nodes, exit')
       break; 
   end

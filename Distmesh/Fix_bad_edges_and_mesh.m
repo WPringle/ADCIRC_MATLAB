@@ -13,10 +13,10 @@ function [ p , t ] = Fix_bad_edges_and_mesh( p , t )
 
 disp('finished cleaning up mesh..')
 
-% Now move nodes in bad remaining elements (fast)
+% Foruth, delete bad remaining elements and move some nodes (fast)
 [p,t] = fix_interior_angles(p,t);
 
-disp('finished moving nodes in bad elements..')
+disp('finished fixing bad elements..')
 end
 
 function [p,t] = delete_elements_outside_main_mesh(p,t)
@@ -143,20 +143,82 @@ end
 
 function [p,t] = fix_interior_angles(p,t)
 %% Identify bad elements and move one node to centre of surrounding ones
-    [ vtov, nnv, ~, ~, ~ ] = NodeConnect2D( t );
+    % First, delete elements with almost 180 degree angles
     tq = gettrimeshquan( p, t);
-    [I,~] = find(tq.vang < 30*pi/180 | tq.vang > 130*pi/180);
-    %       
-    for i = I'
-        % Get the node belonging to largest angle
-        [ang,j] = max(tq.vang(i,:));
-        if ang < pi*90/180
-            % Get node belonging to smallest angle
-            [~,j] = min(tq.vang(i,:));
-        end
-        node = t(i,j) ;
-        % Move this node to center of surrounding nodes
-        center = mean(p(vtov(1:nnv(node),node),:));
-        p(node,:) = center;
+    tq.vang = real(tq.vang);
+    [I,~] = find(tq.vang > 175*pi/180);
+    disp(['deleting ' num2str(length(I)) ' extremely thin elements'])
+    % delete the element
+    t(I,:) = [];
+    % delete disjoint nodes
+    [p,t] = fixmesh(p,t);
+    
+    % Second, delete elements with larger than 150 degree angles and move
+    % point to mid point of existing corners
+    tq = gettrimeshquan( p, t);
+    tq.vang = real(tq.vang);
+    [I,J] = find(tq.vang > 150*pi/180);
+    for i = 1:length(I)
+        % get nodes of the element and the node corresonding to large
+        % angle and the center point of the other nodes
+        nodes = t(I(i),:);
+        node = nodes(J(i)); nodes(J(i)) = [];
+        center = mean(p(nodes,:));
+        % move the node inline with the other corners
+        p(node,:) = center; 
     end
+    disp(['deleting ' num2str(length(I)) ...
+          ' very thin elements and moving nodes'])
+    % delete the element
+    t(I,:) = [];
+    % delete disjoint nodes
+    [p,t] = fixmesh(p,t);
+    
+    % Third, move nodes of elements with small or lightly large angles..
+    [ vtov, nnv ] = NodeConnect2D( t );
+    EToE = Connect2D(t);
+    tq = gettrimeshquan( p, t);
+    [I,~] = find(tq.vang < 30*pi/180 | tq.vang > 130*pi/180); 
+    disp(['moving nodes for ' num2str(length(I)) ' somewhat thin elements'])
+    %       
+    J = [];
+    for i = I'
+        if length(unique(EToE(i,:))) == 2
+            % Only connected to one other element 
+            %(we want to just delete this one)
+            J(end+1) = i;
+        else
+            % Get the node belonging to largest angle
+            [ang,j] = max(tq.vang(i,:));
+            if ang > 90*pi/180
+                % Move >90 deg node to center of surrounding nodes
+                node = t(i,j) ;
+                center = mean(p(vtov(1:nnv(node),node),:));
+                p(node,:) = center; 
+            end
+        end
+    end
+    disp(['deleting ' num2str(length(J)) ' somewhat thin elements'])
+    % delete those elements indicated
+    t(J,:) = [];
+    % delete disjoint nodes
+    [p,t] = fixmesh(p,t);
+    
+    % Fourth, move nodes of elements with small angles..
+    [ vtov, nnv ] = NodeConnect2D( t );
+    etbv = extdom_edges(t, p);
+    etbv = unique(etbv(:));
+    tq = gettrimeshquan( p, t);
+    [I,J] = find(tq.vang < 30*pi/180); 
+    % Move two largest nodes outwards so small angle satisfied
+    nn = 0;
+    for i = 1:length(I)
+        node = t(I(i),J(i));
+        if isempty(find(node == etbv, 1))
+            nn = nn + 1;
+            center = mean(p(vtov(1:nnv(node),node),:));
+            p(node,:) = center; 
+        end
+    end 
+    disp(['moving nodes for ' num2str(nn) ' slighthy thin elements'])
 end
