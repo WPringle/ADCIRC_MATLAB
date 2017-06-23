@@ -98,12 +98,17 @@ nvel = sscanf(msgline,'%d %*s') ;
 
 nvell = zeros(nbou,1) ;
 ibtype = zeros(nbou,1) ;
-nbvv = zeros(nvel,nbou) ;
+
+if nvel*nbou > 1d7
+    nbvv = cell(nbou,1); 
+else
+    nbvv = zeros(nvel,nbou) ;
+end
 % tic
 for i = 1: nbou
     msgline = fgetl(fid) ;
     
-    [varg,nag] = sscanf(msgline,'%d %d %*s \n') ;
+    [varg,~] = sscanf(msgline,'%d %d %*s \n') ;
     nvell(i) = varg(1) ;
     ibtype(i) = varg(2) ;
     
@@ -114,7 +119,11 @@ for i = 1: nbou
             %   nbvv(k,i) = str2num(msgline) ;
             % end
             % Nov 15, 2012, improve reading efficiency
-            nbvv(1:nvell(i),i) = fscanf(fid,'%d \n', nvell(i) ) ;
+            if nvel*nbou > 1d7
+                nbvv{i} = fscanf(fid,'%d \n', nvell(i) ) ;
+            else
+                nbvv(1:nvell(i),i) = fscanf(fid,'%d \n', nvell(i) ) ;
+            end
         otherwise
             msgline = fgetl(fid) ;
     end
