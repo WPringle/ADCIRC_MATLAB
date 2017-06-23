@@ -138,7 +138,7 @@ while 1
   tq = gettrimeshquan( p, t);
   mq_m = mean(tq.qm);
   mq_l = prctile(tq.qm,0.5);
-  if mq_m > 0.97 && mq_l > 0.5
+  if mq_m > 0.97 && mq_l > 0.8
       nn = remove_small_connectivity(p,t); 
       if ~isempty(nn)
           disp(['deleting ' num2str(length(nn)) ' due to small connectivity'])

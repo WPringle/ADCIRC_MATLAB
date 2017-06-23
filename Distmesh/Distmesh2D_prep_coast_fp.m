@@ -388,10 +388,10 @@ disp('Fixing mesh...');
 [p,t] = Fix_bad_edges_and_mesh(p,t);
 tq = gettrimeshquan( p, t);
 mq_m = mean(tq.qm);
-mq_l = prctile(tq.qm,0.1);
+mq_l = min(tq.qm);
 disp(['number of nodes is ' num2str(length(p))])
 disp(['mean quality is ' num2str(mq_m)])
-disp(['0.1 prctile quality ' num2str(mq_l)])   
+disp(['min quality is ' num2str(mq_l)])   
 if plot_on >= 1 
     simpplot(p,t);
 end
