@@ -71,29 +71,31 @@ dxx = (bbox(2,1) - bbox(1,1)) ;
 dyy = (bbox(2,2) - bbox(1,2)) ;
 deltat = 0.2; 
 densityctrlfreq = ceil((1/deltat)*5);
-itmax = max(itmax,ceil(max(dxx/deltat, dyy/deltat))); 
-
+itmax = max(itmax,ceil(1.5*max(dxx/deltat, dyy/deltat))); 
+disp(['Will perform a maximum number of ' num2str(itmax) ' iterations']);
+save_qual = zeros(itmax,2);
 if isempty(p)
     %% 1. Create initial distribution in bounding box (equilateral triangles)
     [x,y]=meshgrid(bbox(1,1):h0:bbox(2,1),bbox(1,2):h0*sqrt(3)/2:bbox(2,2));
     x(2:2:end,:)=x(2:2:end,:)+h0/2;                 % Shift even rows
     p=[x(:),y(:)];                                  % List of node coordinates
-
+    disp(['The number of points before rejection in bbox is ',num2str(length(p))]);
+    
     %% 2. Remove points outside the region, apply the rejection method
     p=p(feval(fd,p,0)<geps,:);                      % Keep only d<0 points
     r0=1./feval(fh,p).^2;                           % Probability to keep point
     max_r0 = 1/h0^2;   
     p=p(rand(size(p,1),1) < r0/max_r0,:);           % Rejection method
     
-    % Saving the initial points
-    disp(['number of nodes is ' num2str(length(p))])
-    disp('saving initial point distribution')
-    save('Ini_points.mat','p');
 end
 if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end     % Remove duplicated nodes
 pfix=unique(pfix,'rows'); nfix=size(pfix,1);
 p = [pfix; p];                                         % Prepend fix points
 N = size(p,1);                                         % Number of points N
+% Saving the initial points
+disp(['Number of initial points after rejection is ',num2str(N)]);
+% disp('Saving initial point distribution')
+% save('Ini_points.mat','p');
 
 %% Iterate
 count=0;
@@ -102,6 +104,8 @@ if plot_on >= 1
     clf,view(2),axis equal,axis off
 end
 toc
+fprintf(1,' ------------------------------------------------------->\n') ;
+disp('Begin iterating...');
 while 1
   tic
   if mod(it,nscreen) == 0
@@ -127,8 +131,10 @@ while 1
     bars=unique(sort(bars,2),'rows');                % Bars as node pairs
     
     % 5. Graphical output of the current mesh
-    if plot_on >= 1
+    if plot_on >= 1 && (mod(it,nscreen)==0 || it == 1)
         cla,patch('vertices',p,'faces',t,'edgecol','k','facecol',[.8,.9,1]);
+        set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]); 
+        title(['Iteration = ',num2str(it)]);
         drawnow
     end
     %
@@ -148,22 +154,24 @@ while 1
       end
       disp([num2str(mq_m) ' ' num2str(mq_l) ...
             ': quality of mesh is good enough, exit'])
+      close all;
       break;  
   end
 
   % Saving a temp mesh
   if mod(it,nscreen) == 0
-      disp(['number of nodes is ' num2str(length(p))])
-      disp(['mean quality is ' num2str(mq_m)])
-      disp(['0.5 prctile quality ' num2str(mq_l)])
-      save('Temp_grid.mat','it','p','t');
+      disp(['Number of nodes is ' num2str(length(p))])
+      disp(['Mean mesh quality is ' num2str(mq_m)])
+      disp(['0.5 prctile mesh quality is ' num2str(mq_l)])
+      save_qual(it,:) = [mq_m, mq_l];
+      save('Temp_grid.mat','it','p','t','save_qual');
   end
   
   % 6. Move mesh points based on bar lengths L and forces F
   barvec=p(bars(:,1),:)-p(bars(:,2),:);              % List of bar vectors
   L=sqrt(sum(barvec.^2,2));                          % L = Bar lengths
   hbars=feval(fh,(p(bars(:,1),:)+p(bars(:,2),:))/2);
-  L0=hbars*Fscale*median(L)/median(hbars); %sqrt(sum(L.^2)/sum(hbars.^2));     % L0 = Desired lengths
+  L0=hbars*Fscale*nanmedian(L)/nanmedian(hbars);    % L0 = Desired lengths
   
   % Density control - remove points that are too close
   if mod(count,densityctrlfreq)==0   
@@ -204,6 +212,7 @@ while 1
           continue;
       end
       disp('too many iterations, exit')
+      close all;
       break ; 
   end
    
@@ -216,12 +225,16 @@ while 1
           continue;
       end
       disp('no movement of nodes, exit')
+      close all;
       break; 
   end
       
   toc
 end
-
+disp('Finished iterating...'); 
+fprintf(1,' ------------------------------------------------------->\n') ;
+%% Clean up 
+[p,t] = fixmesh(p,t);
 return;
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 % Auxiliary subfunctions %

@@ -1,6 +1,6 @@
-function d = dpoly(p,pv,mdl)
+function d = dpoly(p,pv,mdl,num_p)
 
-%   Copyright (C) 2004-2012 Per-Olof Persson. See COPYRIGHT.TXT for details.
+% Copyright (C) 2004-2012 Per-Olof Persson. See COPYRIGHT.TXT for details.
 
 % p are the mesh points
 % pv is the bounded polygon
@@ -18,7 +18,7 @@ if exist('inpoly','file') == 2
     edges = Get_poly_edges( pv );
 end
 
-if isempty(gcp('nocreate'))
+if num_p <= 1
     % SERIAL
     if ~isempty(mdl) 
         [~,d] = knnsearch(mdl,p);
@@ -28,9 +28,11 @@ if isempty(gcp('nocreate'))
     end
     in = inpoly(p,pv,edges); %InPolygon(p(:,1),p(:,2),pv(:,1),pv(:,2));
 else
+    if isempty(gcp)
+        parpool('local',num_p);
+    end
+    Pool = gcp('nocreate');
     % PARALLEL
-    Pool = gcp(); num_p = Pool.NumWorkers;
-
     if ~isempty(mdl) 
         % Get distances to segment
         d = zeros(np,1);
@@ -38,7 +40,7 @@ else
             ns = int64((idx-1)*np/num_p)+1;
             ne = int64(idx*np/num_p);
             f(idx) = parfeval(Pool,@knnsearch,2,...
-                mdl,p(ns:ne,:));
+                              mdl,p(ns:ne,:));
         end
         for idx = 1:num_p
             [idx_t, ~, d_t] = fetchNext(f); % Get results into a cell array

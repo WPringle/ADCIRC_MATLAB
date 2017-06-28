@@ -13,10 +13,15 @@ function [ p , t ] = Fix_bad_edges_and_mesh( p , t )
 
 disp('finished cleaning up mesh..')
 
-% Foruth, delete bad remaining elements and move some nodes (fast)
+% Fourth, delete bad remaining elements and move some nodes (fast)
 [p,t] = fix_interior_angles(p,t);
 
 disp('finished fixing bad elements..')
+
+% Checking again 
+[p,t] = delete_elements_outside_main_mesh(p,t);
+[p,t] = delete_elements_inside_main_mesh(p,t);
+disp('finished cleaning and fixing mesh..')
 end
 
 function [p,t] = delete_elements_outside_main_mesh(p,t)
@@ -210,11 +215,11 @@ function [p,t] = fix_interior_angles(p,t)
     etbv = unique(etbv(:));
     tq = gettrimeshquan( p, t);
     [I,J] = find(tq.vang < 30*pi/180); 
-    % Move two largest nodes outwards so small angle satisfied
     nn = 0;
     for i = 1:length(I)
         node = t(I(i),J(i));
         if isempty(find(node == etbv, 1))
+            % Only move those nodes that are not attached to boundary
             nn = nn + 1;
             center = mean(p(vtov(1:nnv(node),node),:));
             p(node,:) = center; 

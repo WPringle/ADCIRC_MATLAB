@@ -1,10 +1,10 @@
-function segment = smooth_coastline(segment,window,plot_on) 
+function [segment,closed] = smooth_coastline(segment,window,plot_on) 
 % smooth polygons and coastline by applying window pt moving average 
 % kjr apr. 2017
 % modified by WJP June 23 2017
 Isnan = find(isnan(segment(:,1)));
 Isnan = vertcat(0,Isnan); 
-
+closed = 1;
 if length(Isnan) - 1 == 0
     iseg = segment;
     if iseg(1,1) == iseg(end,1)
@@ -16,6 +16,7 @@ if length(Isnan) - 1 == 0
         segment = iseg(floor(window/2)+1:end-floor(window/2)-1,:);
         segment(end,:) = segment(1,:);
     else
+        closed = 0;
         segment(:,1) = smooth(segment(:,1),window);
         segment(:,2) = smooth(segment(:,2),window);
     end
@@ -33,6 +34,7 @@ else
                        iseg(floor(window/2)+1:end-floor(window/2)-1,:);
                 segment(Isnan(i+1)-1,:) = segment(Isnan(i)+1,:);
             else
+                closed = 0;
                 segment(Isnan(i)+1:Isnan(i+1)-1,1) = smooth(iseg(:,1),window);
                 segment(Isnan(i)+1:Isnan(i+1)-1,2) = smooth(iseg(:,2),window); 
             end
