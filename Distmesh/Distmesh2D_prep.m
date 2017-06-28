@@ -25,7 +25,7 @@ function [p,t] = Distmesh2D_prep(meshfile,contourfile,bathyfile,bbox,...
 %                       within and bounds(2) is the max dist from coastline
 %                       to mesh within
 %          minL       : the minimum length of polygon points (island size)
-%                       to allow (usually 5-7)
+%                       to allow (usually min of around 7)
 %          itmax      : Maximum number of iterations in distmesh function
 %          plot_on    : choose whether to plot map and mesh during calc or
 %                       not (Yes = 1, No = 0)

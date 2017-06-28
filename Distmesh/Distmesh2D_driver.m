@@ -31,20 +31,20 @@ dist_param   = 0.20;                             % Distance paramater (percent t
                                                  % should change with distance, set zero to ignore).
 wl_param     = 200;                              % Parameter in wavelength function (set zero to ignore, see ref for equation in prep...)
 slope_param  = 20;                               % Parameter in slope function (set zero to ignore, see ref for equation in prep...)
-itmax        = 100;                               % Maximum number of iterations allowed in distmesh
+itmax        = 100;                              % Maximum number of iterations allowed in distmesh
 MaxDist      = 0.40;                             % (only used if meshfile isempty). Maximum distance in degrees that you want to trim in from the mainland boundary.
 MaxEle       = 10.0;                             % (only used if meshfile isempty). Maximum elevation above the sea level to grid to in meters.
 bounds       = [MaxEle,MaxDist];                 % NOTE: Both maxele and maxdist must be satisfied to trim. 
-minL         = 40.0;                             % (only used if meshfile is empty) Minimum length (in number of vector points) to ignore within floodplain (i.e. small lakes, ponds, etc).
+minL         = 7;                                % Minimum length (in number of scaled vector points) to ignore for a polygon
 plot_on      = 1;                                % Plot (1=plots triangulation at nscreen intervals,2=additionally plots and saves the edge functions, 3=debug, 0=no plots)
 nscreen      = 1;                                % Output interval of temporary grid files and mesh qualityt information
 ini_p        = [];                               % Initial point distribution (optional, can accelerate convergence).
 fix_p        = [];                               % Fixed points (used to make the floodplain conform to the coastal mesh)... 
-num_p        = 4;                               % number of processors to use (<=1 for serial)
-                                                % use these if you have a
-%open ocean                                     % set of vertices that you do not want to move.
-% bbox        = [-50     -48                    % minLon maxLon
-%                 38     40.0 ];                % minLat MaxLat
+num_p        = 4;                                % number of processors to use (<=1 for serial)
+                                                 % use these if you have a
+%open ocean                                      % set of vertices that you do not want to move.
+% bbox        = [-50     -48                     % minLon maxLon
+%                 38     40.0 ];                 % minLat MaxLat
 % LI area
 bbox        = [-100 -80
                 20 30];
