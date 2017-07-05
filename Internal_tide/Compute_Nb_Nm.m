@@ -22,7 +22,7 @@ function [Nb,Nm] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,N,lon_N,lat_N,proj)
 % Created: 2016-10-05
 
 % Set minimum length for interpolating data
-Min_length = 30;
+Min_length = 20;
 
 % Projection set
 % Getting minima and maxima
@@ -39,6 +39,7 @@ lon_min = double(max(loncmin,min(lon_M(:))-30));
 lon_max = double(min(loncmax,max(lon_M(:))+30));
 lat_min = double(max(latcmin,min(lat_M(:))-30));
 lat_max = double(min(latcmax,max(lat_M(:))+30));
+if lat_max == 90; lat_max = 89; end
 m_proj(proj,'lon',[ lon_min lon_max],'lat',[ lat_min lat_max])
 
 % Conversion to projection coordinates
@@ -51,12 +52,10 @@ yy = double(yy);
 % initialisation
 Nb = zeros(size(B)); Nm = zeros(size(B)); 
 Nlast = zeros(size(B)); Count = zeros(size(B));
-contour_int = zcontour(2) - zcontour(1);
-% loop
+% do the interpolation onto the mesh
+N_interp = cell(length(zcontour),1);
 for zvalue = 1:length(zcontour)
 
-    if length(lat_N{zvalue}) < Min_length; continue; end
-    
     x = lon_N{zvalue};
     y = lat_N{zvalue};
     x = double(x); y = double(y);
@@ -64,27 +63,77 @@ for zvalue = 1:length(zcontour)
     [x,y] = m_ll2xy(x,y);   
     N_now = N{zvalue};
     NNan = find(~isnan(x));
+
+    if length(NNan) < Min_length; continue; end
     
     % Make the interpolant using scatteredInterpolant natural
     F = scatteredInterpolant(x(NNan),y(NNan),N_now(NNan),'natural','nearest');
     
     % Get data where depth is equal to rounded zvalue
-    I = find( contour_int*int32(B/contour_int) == zcontour(zvalue));
-    
-    % Interpolate data to get Nb 
-    Nb(I) = F(xx(I),yy(I));
-    
+    %I = find( contour_int*int32(B/contour_int) == zcontour(zvalue));
+    % Get data where depth is larger than current contour
+%     I = find( B >= zcontour(zvalue) & B < zcontour(zvalue+1));
+%     Nb = F(xx(I),yy(I));
+%     J = find( );
+%     Nb_lw = F(xx(J),yy(J));
+%     % Interpolate data to get Nb 
+%     Nb(I) = F(xx(I),yy(I));
+    J = find( B > zcontour(max(1,zvalue-1)));
     % Get data where depth is larger than or equal to round zvalue
-    J = find( contour_int*int32(B/contour_int) >= zcontour(zvalue));
+    %J = find( contour_int*int32(B/contour_int) >= zcontour(zvalue));
+    N_interp{zvalue} = NaN(length(B),1);
+    N_interp{zvalue}(J) = F(xx(J),yy(J));
     
     % Add data at each contour for averaging later
-    Nlast(J) = F(xx(J),yy(J));
-    Nm(J) = Nm(J) + Nlast(J);
-    Count(J) = Count(J) + 1;
+    %Nlast(J) = F(xx(J),yy(J));
+    %Nm(J) = Nm(J) + Nlast(J);
+    %Count(J) = Count(J) + 1;
 end
+%
+for zvalue = 1:length(zcontour)-1    
+    DZ = zcontour(zvalue+1) - zcontour(zvalue);
+    % Test whether we have data above us
+    if ~isempty(N_interp{zvalue+1})
+        J = find( B > zcontour(zvalue) & B <= zcontour(zvalue+1));
+        if ~isempty(J)
+            % For Nb do linear interp
+            dz = min(DZ,(B(J) - zcontour(zvalue)));
+            Nb(J) = N_interp{zvalue}(J).*(DZ-dz)/DZ + ...
+                    N_interp{zvalue+1}(J).*dz/DZ;
+
+            % For Nm do the integral sum
+            % For depths within the current range
+            Weight = 0.5*(zcontour(zvalue)+B(J)-zcontour(1))./B(J);
+            Nm(J) = Nm(J) + 0.5*Weight.*(N_interp{zvalue}(J)+Nb(J)).*dz;
+        end
+        % For depths larger than current range
+        J = find( B > zcontour(zvalue+1));
+        if ~isempty(J)
+            Weight = 0.5*(zcontour(zvalue)+zcontour(zvalue+1)-zcontour(1))./B(J);
+            Nm(J) = Nm(J) + 0.5*Weight.*...
+                            (N_interp{zvalue}(J)+N_interp{zvalue+1}(J))*DZ; 
+        end
+    else
+        J = find( B > zcontour(zvalue));
+        if ~isempty(J)
+            % For Nb just set equal to the last available contour value
+            dz = B(J) - zcontour(zvalue);
+            Nb(J) = N_interp{zvalue}(J);
+
+            % For Nm do the integral sum
+            % For depths within the current range
+            Weight = 0.5*(zcontour(zvalue)+B(J)-zcontour(1))./B(J);
+            Nm(J) = Nm(J) + Weight.*Nb(J).*dz;
+        end
+        break;
+    end
+end
+% Divide Nm by depth
+Nm = Nm./(B-zcontour(1));
+
 % Divide by the count of contours
-Nm(Count > 0) = Nm(Count > 0)./Count(Count > 0);
+%Nm(Count > 0) = Nm(Count > 0)./Count(Count > 0);
 % Constant extrapolation to depths outside of last contour 
-Nb(Nb == 0 & Count > 0) = Nlast(Nb == 0 & Count > 0);
+%Nb(Nb == 0 & Count > 0) = Nlast(Nb == 0 & Count > 0);
 %EOF
 end
