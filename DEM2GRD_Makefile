@@ -1,0 +1,37 @@
+NETCDFHOME=/afs/crc.nd.edu/x86_64_linux/n/netcdf/4.4.0/intel/15.0/build/
+
+FC = ifort
+FLAGS := -g -I$(NETCDFHOME)/include #-openmp 
+LIBS := -L$(NETCDFHOME)/lib  -lnetcdff -lnetcdf -shared-intel
+
+.PHONY: clean
+clean:
+	rm *.o *.x *.mod
+
+MAINOBJ = DEM2GRDv4.o
+
+DEM2GRD.x: $(MAINOBJ) 
+	$(FC) $(FLAGS) -o $@ $^ $(LIBS)
+
+%.o: %.F90
+	$(FC) $(FLAGS) -o $@ -c $<
+
+#Example .hdr file for NETCDF
+#lat               : lat dim
+#lon               : lon dim
+#lat               : lat var name
+#lon               : lon var name
+#Band1             : depth var name
+#1                 : Flip the y-axis upside-down (1: YES, 0: NO)?
+
+#Example input file
+#Keep characters out of first 60 lines
+#************************************************************
+#INDWPAC_v1.7b.14                                             ! INPUT ADCIRC MESH (FLAG DEPTH WITH -888 FOR PLACES TO INTERPOLATE, OR CHANGE INTERPOLATION TYPE BELOW)
+#flag.grd                                                     ! FLAGGED GRID FOR LOCAL SMOOTHING (IGNORED IF FILE DOESN'T EXIST)
+#1                                                            ! COORDINATE SYS. (0 for Cartesian; 1 for lat/lon)
+#bathy_SSG_1_120.nc                                           ! INPUT FLT/GRD DEM FILE NAME (NO FILE EXTENTION) - MUST BE SAME COORDINATES AS INPUT MESH
+#-1.0                                                         ! Z-MULTIPLICATION FACTOR
+#2                                                            ! AVERAGING METHOD (0 for automatic; any other positive integer for smoothing)
+#99999                                                        ! INTERPOLATION TYPE: Interpolate for z < x values in mesh? = x: yes, = 99999: no; = -888: only interpolate depths flagged with -888 in the mesh)
+#../INDWPAC_temp.grd                                          ! OUTPUT ADCIRC MESH WITH INTERPOLATED Z-VALUES
