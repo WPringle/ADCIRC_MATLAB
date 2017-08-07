@@ -20,8 +20,8 @@ function [p,t] = OceanMesh2D_prep(meshfile,contourfile,bathyfile,bbox,...
 %          slope_param: Parameter in slope function, (set 0 to ignore)
 %                       edgelength = 2*pi/slope_param*H/abs(grad(H)),
 %                       where H is the bathymetric depth
-%     min_feature_size: Parameter that represents the minimum feature size
-%                       resolved in degrees.
+%          dt         : Timestep to use for CFL limiter. dt < 0 to ignore 
+%                       If dt = 0 , automatic based on distance function                       
 %          bounds     : Where meshfile is present (to mesh floodplain)
 %                       bounds(1) is the upper bound of the topo to mesh
 %                       within and bounds(2) is the max dist from coastline
@@ -37,8 +37,6 @@ function [p,t] = OceanMesh2D_prep(meshfile,contourfile,bathyfile,bbox,...
 %                       and display the mesh quality
 %          num_p      : number of parallel processors required
 %                       (<=1 for serial)
-%      bathyfilefix   : File that has full coverage of bbox that is used
-%                       to fill in NaNs.
 %          edgefx     : Edge function interpolant. A gridded interpolant from a previous %			go at the same problem.
 
 %
@@ -50,6 +48,7 @@ function [p,t] = OceanMesh2D_prep(meshfile,contourfile,bathyfile,bbox,...
 % V1:  Combining floodplain+coastal meshing,overall improvements+bugfixes, and
 %      polygonal selection tool for floodplain meshing by Keith Roberts 2017-April-2017-June
 % V2.0 C++ ANN KD-Tree for NN-searches, feature size edgefunction, and general improvements by Keith Roberts July 2017.
+% V2.x Making bathyfiles, feature size and CFL limiter options more general, small changes in distmesh2d. WJP Aug 2017 
 %
 % Reference for wavelength and slope function:
 % Lyard, F., Lefevre, F., Letellier, T., & Francis, O. (2006).
@@ -104,15 +103,6 @@ elseif ~isempty(contourfile)
     polygon        = [];
     
     disp('Reading in shapefile...')
-%     if min_feature_size  > 0
-%         spacing = min_feature_size/3;
-%     elseif min_el > 0
-%         spacing = min_el;
-%     else
-%         disp('min_feature_size = 0 and min_el <= 0 are not compatible, ',...
-%              'exiting OceanMesh2D')
-%         return;
-%     end
     % Read polygon from shape file, and apply spacing interpolant
     polygon_struct = Read_shapefile( contourfile, bbox, minL, ...
                                      abs(min_el), 0, polygon );
@@ -423,53 +413,6 @@ else
         %         save -v7.3 slope_fx slope_fx
         %         clearvars slope_fx
     end
-  
-%     %--feature size
-%     if min_feature_size > 0 && poly_count ~= 1
-%         disp('   Building the feature size function...');
-%         nn = nn + 1;
-%         
-%         %---calculate the gradient of the distance function.
-%         [ddx,ddy] = gradient(d,bathyres);
-%         d_fs = sqrt(ddx.^2 + ddy.^2);
-%         
-%         x_v = reshape(lon_g,[],1);
-%         y_v = reshape(lat_g,[],1);
-%         
-%         %---find singularties in the distance function that are within the poly
-%         d_fs = reshape(d_fs,[],1); d = reshape(d,[],1);
-%         x_kp = x_v(d_fs < 0.9 & d < 0 ); y_kp = y_v(d_fs < 0.9 & d < 0 );
-%         
-%         %---Assign to all points in the edge function the nearest medial point distance
-%         mdlMEDIAL = ann([x_kp,y_kp]');
-%         [~,dPOS] = ksearch(mdlMEDIAL,[x_v,y_v]',1,0,0);
-%         d = reshape(d,length(I),[]); dPOS = reshape(dPOS',length(I),[]);
-%         
-%         %---Twice the distance to the nearest medial point is the feature size.
-%         % The edge length is the feature size divided by the number of
-%         % elements (in this case 3) needed to resolve it (see Koko paper, ref above).
-%         hh(:,:,nn)  = (2.*( d+dPOS))./3;
-%         hh(:,:,nn)  = abs(hh(:,:,nn)); %---feature size is always positive
-%         
-%         %---plot it
-%         if plot_on >= 2
-%             figure;
-%             m_proj('Mercator','long',[bbox(1,1) bbox(1,2)],...
-%                 'lat',[bbox(2,1) bbox(2,2)]);
-%             m_pcolor(lon_g,lat_g,hh(:,:,nn).*111000); shading interp;
-%             m_grid('xtick',10,'tickdir','out','yaxislocation','left','fontsize',7);
-%             hold on; m_plot(polygon_struct.mainland(:,1),polygon_struct.mainland(:,2),'r');
-%             hold on; m_plot(polygon_struct.inner(:,1),polygon_struct.inner(:,2),'m');
-%             cb = colorbar; ylabel(cb,'m');
-%             caxis([30 1000]) %--in meters
-%         end
-%         clearvars d nv dx dy mdlMEDIAL k dPOS
-%         %         feature_sz_fx = hh(:,:,nn);
-%         %         save -v7.3 feature_sz_fx feature_sz_fx
-%         %         clearvars feature_sz_fx
-%     elseif min_feature_size > 0
-%         disp('feature size cannot be used because no polygons exist')
-%     end
     
     % Get min of slope and wavelength, setting equal to hh_m
     if wl_param > 0 || slope_param > 0
@@ -546,21 +489,22 @@ else
         end
     end
     
-    % Limit CFL assuming dt = CFL_limiter, or automatically
+    % Limit CFL if dt >= 0, dt = 0 finds dt automatically
     if dt >= 0
         g = 9.807; descfl = 0.5; 
         if dt == 0
            % Find min allowable dt based on distance function
-           if dist_param > 0 
+           if dist_param > 0 && ~ocean_only 
               hh_d = hh(:,:,1); hh_d(hh_d <= 0) = NaN;
               hh_d(hh_d < min_el ) = min_el; 
               [~,loc] = max(hh_d(:));
+              % This ensures only positive depths taken into account
               bb = max(sign(bathy(loc))*bathy,0);
               dt = descfl*hh_d*111000./sqrt(g*bb);
               [dt, ~] = min(dt(:));
               clear hh_d
            else
-              disp('Error: cannot use automatic CFL limiter with no dist_param') 
+              disp('Error: cannot use automatic CFL limiter with no dist_param or no land boundaries') 
               abort(0);
            end
         end
