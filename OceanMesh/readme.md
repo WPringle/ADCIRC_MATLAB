@@ -1,7 +1,7 @@
-#Distmesh
+#OceanMesh2D
 1. Use the files in the current directory plus the following package to run MATLAB code:
 
-  m_map package: https://www.eoas.ubc.ca/~rich/map.html
+   m_map package: https://www.eoas.ubc.ca/~rich/map.html
 
 2. Navigate into ann_wrapper directory and run ann_class_compile. Add the ann_wrapper directory to your path. You need to have a working mex compiler. 
   
