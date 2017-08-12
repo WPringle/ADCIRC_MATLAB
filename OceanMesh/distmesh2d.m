@@ -20,7 +20,7 @@ function [p,t] = distmesh2d(fd,fh,h0,bbox,p,pfix,itmax,plot_on,nscreen)
 tic
 it = +1 ; cl = 0;
 geps=+.001*h0; deps=sqrt(eps)*h0;
-ttol=+.1; dptol = +.001; Fscale=+1.2;
+ttol=+.1; Fscale=+1.2;
 deltat = +0.1;
 save_qual = zeros(itmax,2);
 imp = 10; % number of iterations to do mesh improvements (delete/add)
@@ -32,7 +32,7 @@ if isempty(p)
     len = abs(bbox(1,1)-bbox(2,1));
     blklen = floor(len)/noblks;
     if len < +5; noblks = 1; end %--default back to one block if domain isn't too big.
-    st = bbox(1,1) + blklen; ed = st + blklen;
+    st = bbox(1,1) ; ed = st + blklen; % critical fix
     for blk = 1 : noblks
         if blk~=noblks
             [x,y]=meshgrid(st:h0:ed,...
@@ -53,7 +53,7 @@ if isempty(p)
         p = [p;p1];
     end
 end
-if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end       
+if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end
 pfix=unique(pfix,'rows'); nfix=size(pfix,1);           % Remove duplicated nodes
 p = [pfix; p];                                         % Prepend fix points
 N = size(p,1);                                         % Number of points N
@@ -85,7 +85,7 @@ while 1
         % 5. Graphical output of the current mesh
         if plot_on >= +1 && (mod(it,nscreen)==0 || it == +1)
             cla,patch('vertices',p,'faces',t,'edgecol','k','facecol',[.8,.9,1]);
-            set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]);
+            %set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]);
             title(['Iteration = ',num2str(it)]);
             drawnow
         end
@@ -95,37 +95,13 @@ while 1
     tq = gettrimeshquan( p, t);
     mq_m = mean(tq.qm);
     mq_l = prctile(tq.qm,0.5);
-    
-    if  mod(it,imp) == imp-1 
-        %[p,t] = fixmesh(p,t);
-        %[p,t] = direct_smoother_lur(p,t); 
-        %tqf  = Get_Finished_Quality(p,t);
-        %minf = sort(tqf.qm);
-        %minf = minf(20);
-        %
-        %minf = prctile(tqf.qm,0.05); %min(tqf.qm);
-        %meanf = mean(tqf.qm);
+    if  mod(it,imp) == imp-1
         if mq_m > 0.95 && mq_l > 0.6
-        %if minf > 0.5 && meanf > 0.975
-              %[p,t] = remove_small_connectivity(p,t,fd,geps);
-%             if ~isempty(nn)
-%                 cl = cl + 1; % Only do this loop maximum of five times
-%                 if cl < 5
-%                     disp(['deleting ' num2str(length(nn)) ' due to small connectivity'])
-%                     p(nn,:) = [];
-%                     N = size(p,1); pold = inf;
-%                     it = it + 1; 
-%                     continue; 
-%                 end
-%            else
-                disp('min finished quality of mesh is good enough, exit')
-                close all;
-                break;
-%            end
-%         else
-%             N = size(p,1); pold = inf; it = it+1;
-%             continue;
-         end
+            disp('min finished quality of mesh is good enough, exit')
+            close all;
+            break;
+            
+        end
     end
     
     % Saving a temp mesh
@@ -146,24 +122,33 @@ while 1
     
     % Mesh improvements (deleting addition)
     if mod(it,imp)==0
-        if save_qual(it-1,1) - save_qual(it-2,1)/deltat < +1e-2 
+        if save_qual(it-1,1) - save_qual(it-2,1)/deltat < +1e-2
             % remove elements with small connectivity
             nn = get_small_connectivity(p,t);
             disp(['Deleting ' num2str(length(nn)) ' due to small connectivity'])
             % remove points that are too close.
             if any(L0 > +2*L)
-                nn1 = setdiff(reshape(bars(L0>2*L,:),[],1),1:nfix);
+                %nn1 = setdiff(reshape(bars(L0>2*L,:),[],1),1:nfix);
+                [bnde]=extdom_edges2(t,p);
+                nn1 = setdiff(reshape(bars(L0>2*L,:),[],1),[1:nfix;unique(bnde(:))]); % do not delete boundary nodes too close
                 disp(['Deleting ' num2str(length(nn1)) ' points too close together'])
                 nn = unique([nn; nn1]);
             end
+            
             % split too long edges
-            il = find(LN>+1.5);
-            if  ~isempty(il) 
-                padd = (p(bars(il,1),:)+p(bars(il,2),:))/2;
-                display(['Number of edges split : ',num2str(length(il))])
+            nsplit=floor(LN./0.75); nsplit(nsplit<1)=1; 
+            [ok]=setset2(bars,bnde); % do not split boundary bars
+            adding=0;
+            for jj = 2 : 5 % number of multiples of LN to split 
+                il = find(nsplit==jj & ~ok);
+                for jjj = 2 : jj %--number of times to split
+                    padd = (p(bars(il,1),:)+p(bars(il,2),:))/2;
+                    p = [p;padd];
+                    adding = length(padd) + adding; 
+                end
             end
-            p(nn,:)= []; p = [padd; p];
-            N = size(p,1); pold = inf; it = it+1;
+            display(['Number of edges split : ',num2str(adding)])
+            p(nn,:)= []; N = size(p,1); pold = inf; it = it+1;
             continue;
         end
     end
@@ -173,6 +158,7 @@ while 1
     
     Ftot=full(sparse(bars(:,[1,1,2,2]),ones(size(F))*[1,2,1,2],[Fvec,-Fvec],N,2));
     Ftot(1:size(pfix,1),:)=0;                          % Force = 0 at fixed points
+    
     p=p+deltat*Ftot;                                   % Update node positions
     
     %7. Bring outside points back to the boundary
@@ -200,23 +186,6 @@ while 1
         close all;
         break ;
     end
-    
-    % or all interior nodes move less than dptol (scaled)
-    if ( max(sqrt(sum(deltat*Ftot(d<-geps,:).^2,2))/h0) < dptol )
-        nn = get_small_connectivity(p,t);
-        if ~isempty(nn)
-            cl = cl + 1; % Only do this loop maximum of five times
-            if cl < 5
-                disp(['deleting ' num2str(length(nn)) ' due to small connectivity'])
-                p(nn,:) = [];
-                N = size(p,1); pold = inf;
-                continue;
-            end
-        end
-        disp('no movement of nodes, exit')
-        close all;
-        break;
-    end
     toc
 end
 disp('Finished iterating...');
@@ -239,7 +208,6 @@ return;
     function nn = get_small_connectivity(p,t)
         % Get node connectivity (look for 4)
         [~, nn] = VertToEle(t);
-        %nn = NodeConnect2D( t );
         % Make sure they are not boundary nodes
         bdbars = extdom_edges2(t, p);
         bdnodes = unique(bdbars(:));
@@ -248,60 +216,6 @@ return;
         return;
     end
 
-    function [p,t] = remove_small_connectivity(p,t,fd,geps)
-        for iter = 1:5
-            % Get node connectivity (look for 4)
-            nn2 = NodeConnect2D( t );
-            % Make sure they are not boundary nodes
-            bdbars = extdom_edges(t, p);
-            bdnodes = unique(bdbars(:));
-            I = find(nn2 <= 4);
-            nn2 = setdiff(I',bdnodes);
-            if isempty(nn2); break; end
-            p(nn2,:) = []; 
-            t = delaunay_elim(p,fd,geps);
-        end
-        return; 
-    end    
 
-    function tq = Get_Finished_Quality(p,t)
-        % Before exiting we fix bad edges and smooth mesh
-        [p,t] = Fix_bad_edges_and_mesh(p,t,0);
-        %[p,t] = smoothmesh(p,t,1000); 
-        [p,t] = direct_smoother_lur(p,t); 
-        tq = gettrimeshquan( p, t);
-        minq = sort(tq.qm);
-        tria = tarea(p,t);
-        pmid = (p(t(:,1),:)+p(t(:,2),:)+p(t(:,3),:))/+3;  % Compute centroids
-    end
-
-    function [ar] = tarea(p,t)
-        %Compute triangle area
-        %
-        it1=t(:,1); it2=t(:,2); it3=t(:,3);
-        x21=p(it2,1)-p(it1,1); y21=p(it2,2)-p(it1,2);
-        x31=p(it3,1)-p(it1,1); y31=p(it3,2)-p(it1,2);
-        x32=p(it3,1)-p(it2,1); y32=p(it3,2)-p(it2,2);
-        ar=(x21.*y31-y21.*x31)/2;
-    end
-
-    function[ncon,bn]=ng(t,np)
-        % Returns the nodal graph (ncon) and the idicies of the
-        % nodes on the boundary.
-        ncon = min(sparse(t(:,1),t(:,2),1,np,np)+sparse(t(:,2),t(:,3),1,np,np)+sparse(t(:,3),t(:,1),1,np,np),+1);
-        ncon = min(ncon+ncon',+1);
-        % this finds the boundary points from the nodal graph, whose indexes are stored in bn
-        B = ncon^2.*ncon==+1;
-        bn = find(sum(B,2)>0);
-    end
-
-    function[bnei]=getBouNei(bn,ncon)
-        % Returns the adj boundary neighbors to boundary node bn
-        n=0*bn; bnei=zeros(length(bn),2);
-        for i = +1 : length(bn)
-            n=find(ncon(bn(i),:)==1);
-            bnei(i,1:2)=intersect(n,bn);
-        end
-    end
 
 end

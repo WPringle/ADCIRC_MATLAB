@@ -1,5 +1,6 @@
 function  [bnde,bnd] = extdom_edges2( t , p )
-%
+% bnde -- boundary edges 
+% bnd  -- boundary points
 % Given Element table, extract boundary edges
 edge = [t(:,[1,2]); t(:,[1,3]); t(:,[2,3])];                               % Non-unique edges
 edge = sortrows(sort(edge,2));                                             % Put shared edges next to each other
@@ -8,6 +9,6 @@ idx = [idx;false]|[false;idx];                                             % Tru
 bnde = edge(~idx,:);                                                       % Boundary edges
 %edge = edge(idx,:);                                                       % Internal edges
 %edge = [bnde; edge(1:2:end-1,:)];                                         % Unique edges
-bnd  = unique(bnde);                                                       % Boundary nodes
-bnde = bnde; bnd=p(bnd,:); 
+bnde  = unique(bnde,'rows');                                                % Boundary nodes
+bnd=p(bnde(:),:); 
 end
