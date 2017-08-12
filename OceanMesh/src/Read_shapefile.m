@@ -55,25 +55,22 @@ for s = 1:length(SG)
     x_n = x_n(~isnan(x_n)); y_n = y_n(~isnan(y_n));
     % Check proportion of polygon that is within bbox
     In = inpoly([x_n',y_n'],[polygon.outer;NaN NaN],edges);
-%     p_n = [x_n',y_n'];
-%     np = length(p_n);
-%     % Get the inpolygon
-%     for idx = 1:num_p
-%         ns = int64((idx-1)*np/num_p)+1;
-%         ne = int64(idx*np/num_p);
-%         f(idx) = parfeval(Pool,@inpoly,1,p_n(ns:ne,:),[polygon.outer;NaN NaN],edges);
-%     end
-%     for idx = 1:num_p
-%         [idx_t, in_t] = fetchNext(f); % Get results into a cell array
-%         ns = int64((idx_t-1)*np/num_p)+1;
-%         ne = int64(idx_t*np/num_p);
-%         In(ns:ne,:) = in_t;
-%     end
 %     
     
     % Get the average distance between points in polygon
     m_d = mean(abs(diff([x_n; y_n],[],2)),2); m_d = norm(m_d,2);
-    if length(find(In == 1)) < h0/m_d*min_length 
+    % instead of basing this on length, lets calculate the area of the
+    % feature using the shoelace algorithm and decided whether to keep or
+    % not based on area. 
+    if(x_n(end)==x_n(1))
+        area = shoelace(x_n',y_n');
+        %area 
+        %hold on; plot(x_n,y_n,'r'); 
+    else 
+        area = 999; % not a polygon
+    end
+    if(area < 4*h0^2) % too small don't consider it.
+    %if length(find(In == 1)) < h0/m_d*min_length
         % If length of polygon within bbox is too small then we ignore it
         continue;
     elseif length(find(In == 1)) == length(x_n)
