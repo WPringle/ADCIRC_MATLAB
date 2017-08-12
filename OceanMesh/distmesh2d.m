@@ -71,7 +71,7 @@ while 1
     if mod(it,nscreen) == 0
         disp(['Iteration =' num2str(it)]) ;
     end
-    
+        
     % 3. Retriangulation by the Delaunay algorithm
     if max(sqrt(sum((p-pold).^2,2))/h0)> ttol            % Any large movement?
         p = unique(p,'rows','stable');
@@ -90,7 +90,7 @@ while 1
             drawnow
         end
     end
-    
+        
     % Getting element quality and check goodness
     tq = gettrimeshquan( p, t);
     mq_m = mean(tq.qm);
@@ -128,27 +128,27 @@ while 1
             disp(['Deleting ' num2str(length(nn)) ' due to small connectivity'])
             % remove points that are too close.
             if any(L0 > +2*L)
-                %nn1 = setdiff(reshape(bars(L0>2*L,:),[],1),1:nfix);
                 [bnde]=extdom_edges2(t,p);
                 nn1 = setdiff(reshape(bars(L0>2*L,:),[],1),[1:nfix;unique(bnde(:))]); % do not delete boundary nodes too close
                 disp(['Deleting ' num2str(length(nn1)) ' points too close together'])
                 nn = unique([nn; nn1]);
             end
             
-            % split too long edges
+            % split long edges
             nsplit=floor(LN./0.75); nsplit(nsplit<1)=1; 
             [ok]=setset2(bars,bnde); % do not split boundary bars
-            adding=0;
-            for jj = 2 : 5 % number of multiples of LN to split 
+            adding=0; pst=[];
+            for jj = 2 : max(nsplit) 
                 il = find(nsplit==jj & ~ok);
                 for jjj = 2 : jj %--number of times to split
                     padd = (p(bars(il,1),:)+p(bars(il,2),:))/2;
-                    p = [p;padd];
+                    pst = [pst;padd];
                     adding = length(padd) + adding; 
                 end
             end
             display(['Number of edges split : ',num2str(adding)])
-            p(nn,:)= []; N = size(p,1); pold = inf; it = it+1;
+            p(nn,:)= []; p=[pfix; p;pst]; %--p is duplicated here but 'uniqued' above
+            pold = inf; it = it+1;
             continue;
         end
     end
