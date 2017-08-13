@@ -1,8 +1,9 @@
 function [etoe,idx]=EleToEle(t)
 %--if an element shares an edge then it is a neighbor 
-%--returns element-to-element connectivity in crs format. 
+%--returns element-to-element connectivity in csr format. 
 %--triangle ie is connected to etoe(idx(ie):idx(ie+1)-1,2) triangles
-% kjr 2017
+% kjr 2017, fixed August 2017 for self adj triangles (i.e., disjoint
+% elements). 
 t = sort(t,2);
 edges = [t(:,[1 2]);t(:,[1 3]);t(:,[2 3])];
 nt = size(t,1);
@@ -11,6 +12,7 @@ trinum = repmat((1:nt)',3,1);
 trinum = trinum(tags);
 k = find(all(diff(edges,1)==0,2));
 etoe=trinum([k,k+1]);
-etoe=sortrows(etoe);                         
-idx = find(diff(etoe)==1); idx = [1;idx+1];                                              
+[~,dmy1]=sort(etoe(:,1));[~,dmy2]=sort(etoe(:,2)); 
+etoe=sortrows([etoe(dmy1,:); fliplr(etoe(dmy2,:)); (1:nt)',(1:nt)']);%added self adjs. 
+idx = find(diff(etoe(:,1))==1); idx=[idx;length(etoe)]; idx = [1;idx+1];                                              
 end

@@ -29,7 +29,8 @@ while 1
     counter = 0;
     while 1
         % Get connectivity
-        EToE = Connect2D(t1);
+        %EToE = Connect2D(t1);
+        [EToE,xadj] = EleToEle(t1); 
         
         % Traverse grid deleting elements outside
         ic = zeros(ceil(sqrt(length(t1))*2),1);
@@ -46,7 +47,7 @@ while 1
                 % Flag the current element as OK
                 nflag(i) = 1;
                 % Search neighbouring elements
-                for nb = EToE(i,:)
+                for nb = EToE(xadj(i):xadj(i+1)-1,2)' %EToE(i,:)
                     if nflag(nb) == 0
                         icc = icc + 1;
                         ic(icc) = nb;
