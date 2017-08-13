@@ -14,7 +14,7 @@ function [ p , t ] = Fix_bad_edges_and_mesh( p , t, nscreen )
 
 [p,t] = delete_elements_inside_main_mesh(p,t,nscreen);
 
-if nscreen; disp('ALERT: finished cleaning up mesh..'); end
+disp('ALERT: finished cleaning up mesh..'); 
 
 end
 
@@ -47,7 +47,7 @@ while 1
                 % Flag the current element as OK
                 nflag(i) = 1;
                 % Search neighbouring elements
-                for nb = EToE(xadj(i):xadj(i+1)-1,2)' %EToE(i,:)
+                for nb = EToE(xadj(i):xadj(i+1)-1,1)' %EToE(i,:)
                     if nflag(nb) == 0
                         icc = icc + 1;
                         ic(icc) = nb;
@@ -70,28 +70,28 @@ while 1
         counter = counter + 1;
         if(counter > max_lim); disp('ALERT: TOO MANY ITERATIONS...RESTARTING');break; end; % kjr
         
-        if length(find(nflag == 0))/length(t1) < 0.5 || ...
-                length(find(nflag == 0)) == min_del
+        if nnz(find(nflag == 0))/length(t1) < 0.5 || ...
+                nnz(find(nflag == 0)) == min_del
             % choice of EToS OK
             % (deleting less than half of the triangulation)
             break
             
         else
-            min_del = min(min_del,length(find(nflag == 0)));
+            min_del = min(min_del,nnz(find(nflag == 0)));
             EToS = find(nflag == 0); EToS = EToS(1);
         end
     end
     % adding to the triangulation
     t = [t; t1(nflag == 1,:)];
     % deciding whether portion is small enough to exit loop or not
-    if length(find(nflag == 0))/L < 0.05
-        if nscreen
-            disp(['ACCEPTED: deleting ' num2str(length(find(nflag == 0))) ...
-                ' elements outside main mesh']) ;
-        end
+    if nnz(find(nflag == 0))/L < 0.05
+        disp(['ACCEPTED: deleting ' num2str(length(find(nflag == 0))) ...
+            ' elements outside main mesh']) ;
         break
     else
-        disp('  REJECTED CANDIDATE..retrying'); 
+        if(nscreen)
+            disp('  REJECTED CANDIDATE..retrying');
+        end
         % making the subset triangulation
         t1 = t1(nflag == 0,:);
     end
@@ -118,7 +118,11 @@ while 1
     N = numel(nodes_on_edge);
     count = zeros(N,1);
     for k = 1:N
-        count(k) = sum(etbv(:) == nodes_on_edge(k));
+        %ok=etbv(:) == nodes_on_edge(k);
+        ok=ismember(etbv(:),nodes_on_edge(k));
+        count(k)  = nnz(ok); 
+        %count(k) = numel(find(ok));
+        %count(k) = sum(ok);
     end
     %
     [vtoe,nne] = VertToEle(t);
@@ -156,10 +160,8 @@ while 1
             %del_elem_idx(end+1:end+length(con_elem)) = con_elem';
         end
     end
-    if nscreen
         disp(['ACCEPTED: deleting ' num2str(length(del_elem_idx)) ...
             ' elements inside main mesh'])
-    end
     t(del_elem_idx,:) = [];
     
     % delete disjoint nodes
