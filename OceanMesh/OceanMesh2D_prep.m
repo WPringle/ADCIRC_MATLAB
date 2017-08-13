@@ -182,14 +182,15 @@ end
 %% Read DEM and build bathy interpolant for fd (for floodplain)
 disp('Reading the DEM...');
 % Get the lat lon from the bathyfile
-lon = double(ncread(bathyfile{1},'lon'));
-lat = double(ncread(bathyfile{1},'lat'));
+lon = double(ncread(bathyfile{1},'x'));
+lat = double(ncread(bathyfile{1},'y'));
 I = find(lon > bbox(1,1) & lon < bbox(1,2));
 J = find(lat > bbox(2,1) & lat < bbox(2,2));
 lon = lon(I); lat = lat(J);  bathyres = abs(lon(2) - lon(1));
 % Extract the required portions of the bathy
 ncid = netcdf.open(bathyfile{1},'NC_NOWRITE');
-bathy = netcdf.getVar(ncid,2,[I(1) J(1)],[length(I) length(J)]);
+varid =netcdf.inqVarID(ncid,'z'); %---change this to the variable name in your file!
+bathy = netcdf.getVar(ncid,varid,[I(1) J(1)],[length(I) length(J)]);
 netcdf.close(ncid)
 [lon_g,lat_g] = ndgrid(lon,lat);
 
@@ -203,7 +204,7 @@ if ~isempty(find(isnan(bathy), 1))
         lond = lond(Id); latd = latd(Jd);
         % read only part of the DEM necessary
         ncid = netcdf.open(bathyfile{2},'NC_NOWRITE');
-        bathyFIX = netcdf.getVar(ncid,2,[Id(1) Jd(1)],[length(Id) length(Jd)]);
+        bathyFIX = double(netcdf.getVar(ncid,2,[Id(1) Jd(1)],[length(Id) length(Jd)]));
         netcdf.close(ncid)
         [lon_gd,lat_gd] = ndgrid(lond,latd);
         Fb_fix = griddedInterpolant(lon_gd,lat_gd,bathyFIX);
@@ -560,8 +561,9 @@ end
 if isempty(fix_p)
     disp('Check for and fix poor quality triangles...');
     [p,t] = Fix_bad_edges_and_mesh(p,t,1);
+    tq=gettrimeshquan(p,t);%kjr 20170806 
+    t(abs(tq.qm)<0.10,:) = [];
     [p,t] = direct_smoother_lur(p,t); 
-    %[p,t] = smoothmesh(p,t,1000);
     [p,t] = Fix_bad_edges_and_mesh(p,t,1);
 end
 tq = gettrimeshquan( p, t);

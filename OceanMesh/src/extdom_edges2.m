@@ -10,5 +10,5 @@ bnde = edge(~idx,:);                                                       % Bou
 %edge = edge(idx,:);                                                       % Internal edges
 %edge = [bnde; edge(1:2:end-1,:)];                                         % Unique edges
 bnde  = unique(bnde,'rows');                                                % Boundary nodes
-bnd=p(bnde(:),:); 
+bnd=p(unique(bnde(:)),:); 
 end

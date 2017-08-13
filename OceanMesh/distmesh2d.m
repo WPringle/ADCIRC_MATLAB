@@ -140,7 +140,7 @@ while 1
             adding=0; pst=[];
             for jj = 2 : max(nsplit) 
                 il = find(nsplit==jj & ~ok);
-                for jjj = 2 : jj %--number of times to split
+                for jjj = 1 : jj-1 %--number of times to split
                     padd = (p(bars(il,1),:)+p(bars(il,2),:))/2;
                     pst = [pst;padd];
                     adding = length(padd) + adding; 
