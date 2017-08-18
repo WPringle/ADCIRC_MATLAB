@@ -3,6 +3,9 @@ function edges = Get_poly_edges( poly )
 %   Finds the edges for input to inpoly which is required for multiple 
 %   polygons stitched together using nans
     shpEnd = find(isnan(poly(:,1))); 
+    if(isempty(shpEnd)) 
+        shpEnd = length(poly);
+    end;
     shpEnd = vertcat(0,shpEnd); 
     edges = nan(length(poly(:,1))-length(shpEnd),2); 
     count = 1; 

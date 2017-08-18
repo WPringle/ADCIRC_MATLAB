@@ -21,7 +21,7 @@ end
 function [p,t] = delete_elements_outside_main_mesh(p,t,nscreen)
 %% Delete all elements outside the main mesh
 t1 = t; t = []; L = length(t1); close all;
-max_lim = 10; % sometimes the random element was a bad choice in this case, we may never converge. break out and try again in this case. kjr
+max_lim = 100; % sometimes the random element was a bad choice in this case, we may never converge. break out and try again in this case. kjr
 while 1
     % Give a random element not outside main mesh
     EToS =  randi(length(t1),1);
@@ -38,7 +38,7 @@ while 1
         nflag = zeros(length(t1),1);
         icc0 = 1;
         ic0(1) = EToS;
-        
+
         % loop until convergence is read
         while 1
             icc = 0;
@@ -47,7 +47,7 @@ while 1
                 % Flag the current element as OK
                 nflag(i) = 1;
                 % Search neighbouring elements
-                for nb = EToE(xadj(i):xadj(i+1)-1,1)' %EToE(i,:)
+                for nb = EToE(xadj(i):xadj(i+1)-1,2)'
                     if nflag(nb) == 0
                         icc = icc + 1;
                         ic(icc) = nb;
@@ -68,7 +68,7 @@ while 1
         end
         
         counter = counter + 1;
-        if(counter > max_lim); disp('ALERT: TOO MANY ITERATIONS...RESTARTING');break; end; % kjr
+        if(counter >= max_lim); disp('ALERT: TOO MANY ITERATIONS...RESTARTING');break; end; % kjr
         
         if nnz(find(nflag == 0))/length(t1) < 0.5 || ...
                 nnz(find(nflag == 0)) == min_del

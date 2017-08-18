@@ -59,7 +59,6 @@ else
         % make distance very large as must be very far from any boundaries
         d = 1d8*ones(length(p),1);
     end
-        
     % Get the inpolygon
     in = zeros(length(p),1);
     for idx = 1:num_p
