@@ -75,6 +75,7 @@ while 1
     % 3. Retriangulation by the Delaunay algorithm
     if max(sqrt(sum((p-pold).^2,2))/h0)> ttol            % Any large movement?
         p = unique(p,'rows','stable');
+        p = [pfix;p]; 
         N = size(p,1); pold = p;                         % Save current positions
         t = delaunay_elim(p,fd,geps);                    % delaunay with elimination
         
@@ -97,7 +98,7 @@ while 1
     mq_l = prctile(tq.qm,0.5);
     if  mod(it,imp) == imp-1
         if mq_m > 0.95 && mq_l > 0.6
-            disp('min finished quality of mesh is good enough, exit')
+            disp('Quality of mesh is good enough, exit')
             close all;
             break;
             

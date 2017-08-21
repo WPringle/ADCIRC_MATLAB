@@ -84,7 +84,7 @@ while 1
     % adding to the triangulation
     t = [t; t1(nflag == 1,:)];
     % deciding whether portion is small enough to exit loop or not
-    if nnz(find(nflag == 0))/L < 0.05
+    if nnz(find(nflag == 0))/L < 0.01
         disp(['ACCEPTED: deleting ' num2str(length(find(nflag == 0))) ...
             ' elements outside main mesh']) ;
         break
