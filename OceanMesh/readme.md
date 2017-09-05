@@ -1,10 +1,11 @@
 #OceanMesh2D
-1. Use the files in the current directory plus the following package to run MATLAB code:
+1. Use the files in the current directory plus the following packages to run MATLAB code:
 
    m_map package: https://www.eoas.ubc.ca/~rich/map.html
+   TopoToolbox (v2.2):  https://github.com/csdms-contrib/topotoolbox 
 
 2. Navigate into ann_wrapper directory and run ann_class_compile. Add the ann_wrapper directory to your path. You need to have a working mex compiler. 
-   Also download the TopoToolbox . https://github.com/csdms-contrib/topotoolbox
+   Navigate into the topotoolbox directoyr and run compilemexfiles.
 
 3. Make sure your wrkdir is set correctly at the top of driver. Or add permanentely through MATLAB buttons or the command window.
   
@@ -18,6 +19,7 @@
 NOTE: You can first run the scripts interactively and then if you'd like submit to a queue by setting PLOT_ON=0 and making the contourfile empty. This will force OceanMesh2D to load in the polygon structure .mat file from your the interactive run. This allows you to loop through multiple datasets automatically and can be very useful.   
 
 7. If you want to mesh the floodplain you require an initial coastal mesh so that the program extracts the coastline from that and meshes within the floodplain matching the nodes with the coastal mesh
+   NOTE: The floodplain requires you close your segment with the land in its center (opposite to what you would do for the ocean). 
 
 8. Run the program from driver. Here you set all the input parameters and file names you require.  
 

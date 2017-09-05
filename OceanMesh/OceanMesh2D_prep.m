@@ -199,14 +199,16 @@ if ~isempty(contourfile)
         set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]);
     end
     
-    % Cornerify: create artifical outer bounding box to turn segment into
-    % polygon. Lets test for this automatically
-    if ~closed && ~ocean_only
-        [temp] = cornerify(polygon_struct.mainland,boubox);
-        [la,lo]=interpm(temp(:,2),temp(:,1),abs(min_el)/2);
-        polygon_struct.outer = [];
-        polygon_struct.outer(:,1) = lo; polygon_struct.outer(:,2) = la;
+    % Cornerify: create artifical outer bounding box to turn segments into
+    % polygon. Make sure everything is correctly closed regardless if it's a polygon/many polygons and/or a segment/ many segments 
+    % NOTE: Currently we do not support island segments. 
+    if(~ocean_only) 
+      [temp] = cornerify(polygon_struct.mainland,boubox);
+      [la,lo]=interpm(temp(:,2),temp(:,1),abs(min_el)/2);
+      polygon_struct.outer = [];
+      polygon_struct.outer(:,1) = lo; polygon_struct.outer(:,2) = la;
     end
+
     if plot_on >=1
         close all;
         m_proj('Mercator','long',[bbox(1,1) - bufx, bbox(1,2) + bufx],...
@@ -220,9 +222,8 @@ if ~isempty(contourfile)
             m_plot(polygon_struct.mainland(:,1),polygon_struct.mainland(:,2),'k-')
         end
         m_plot(boubox(:,1),boubox(:,2),'k','linewi',2);
-        %m_patch(polygon_struct.outer(:,1),polygon_struct.outer(:,2),'b','FaceColor','b','FaceAlpha',.5); % ...with hatching added.
+        % this needs to fixed, hatching doesn't work well with multiple outer polygons. 
         m_hatch(polygon_struct.outer(:,1),polygon_struct.outer(:,2),'single',30,5,'color','k'); % ...with hatching added.
-        %m_gshhs_i('color','b'); % Coastline for reference...
         m_grid('xtick',10,'tickdir','out','yaxislocation','left','fontsize',7);
         set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]);
         title('Meshing the union of the filled areas...press 1 to accept or 0 to abort...');
@@ -241,6 +242,7 @@ else
         return;
     end
 end
+
 %% Build KD-Trees
 % For the distance function used to calculate edgelength function
 if ~ocean_only
@@ -267,6 +269,7 @@ else
     mdl0 = ann(poly');
     poly = [];
 end
+
 %% BuildEgFx
 % Make edge function interpolant
 if ~isempty(edgefx)
@@ -398,7 +401,7 @@ else
         disp('   Building the confluence scale edge function...');
         nn=nn+1;
         DEMc          = DEMc.elevateminima;                %--get rid of regional sinks
-        FD            = FLOWobj(DEMc,'preprocess','carve');%--create flow obj and carve dem to fill in local sinks.
+        FD            = FLOWobj(DEMc,'preprocess','carve','mex',true);%--create flow obj and carve dem to fill in local sinks.
         A             = flowacc(FD);                       %--n cells draining into cell ie SFD algo.
         A             = dilate(A,ones(3));                 %-- enlarges the features to better capture on the scales we're interested in.
         channels = abs(DEMc.Z)/A;                          %--volume of cell divided by upslope area
@@ -421,14 +424,14 @@ else
     
     %% EnforceBounds
     % Get min of slope, wavelength and channel scale, setting equal to hh_m
-    if wl_param > 0 || slope_param > 0
+    if wl_param > 0 || slope_param > 0 || channel_param > 0
         if dist_param > 0 && ~ocean_only % dist param is already in degrees
             hh_m = min(hh(:,:,2:end),[],3);
             hh(:,:,2:end)= []; % these are large arrays-release the memory
         else
             hh_m = min(hh(:,:,1:end),[],3);
         end
-        dlon=cosd(lat)'; % distance between longitude's
+        dlon=cosd(lat)'; % distance between longitude's at equator
         dlon=repmat(dlon,[size(lon_g,1),1]);
         hh_m=(abs(dlon)./111000).*hh_m;
         
