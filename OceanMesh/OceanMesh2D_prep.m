@@ -1,6 +1,6 @@
 function [p,t] = OceanMesh2D_prep(meshfile,contourfile,bathyfile,bbox,...
-    min_el,max_el,dist_param,wl_param,...
-    slope_param,confluence_scale,dt,bounds,minL,itmax,...
+    min_el,max_el,max_el_ns,dist_param,wl_param,...
+    slope_param,channel_param,dt,bounds,minL,itmax,...
     plot_on,ini_p,fix_p,nscreen,num_p,edgefx,DriverCounter,outfiname)
 % Function for calling grid generator for any general region in the world
 % Inputs:  meshfile   : filename and path of mesh with mainland boundary
@@ -12,6 +12,7 @@ function [p,t] = OceanMesh2D_prep(meshfile,contourfile,bathyfile,bbox,...
 %                        minlat maxlat];
 %          min_el     : The minimum (and initial) edgelength of the mesh
 %          max_el     : The maximum edgelength of the mesh.
+%          max_el_ns  : The maximum edgelength of the mesh on the coastline.
 %          dist_param : The fraction that the edgelength should change
 %                       with distance. Set 0 to ignore
 %          wl_param   : Parameter in wavelength function, (set 0 to ignore)
@@ -20,6 +21,9 @@ function [p,t] = OceanMesh2D_prep(meshfile,contourfile,bathyfile,bbox,...
 %          slope_param: Parameter in slope function, (set 0 to ignore)
 %                       edgelength = 2*pi/slope_param*H/abs(grad(H)),
 %                       where H is the bathymetric depth
+%          channel_parm: Parameter that determines how much resolution is
+%                        used in areas of strong gravity driven flow (normally 0.5e-6)
+%                        or large upslope area
 %          dt         : Timestep to use for CFL limiter. dt < 0 to ignore
 %                       If dt = 0 , automatic based on distance function
 %          bounds     : Where meshfile is present (to mesh floodplain)
@@ -45,36 +49,39 @@ function [p,t] = OceanMesh2D_prep(meshfile,contourfile,bathyfile,bbox,...
 %
 % V0 : Initial development by William Pringle, Damrongsak Wirasaet, 2016-Feb 2017
 % V1:  Combining floodplain+coastal meshing,overall improvements+bugfixes, and
-%      polygonal selection tool for floodplain meshing by Keith Roberts 2017-April-2017-June
-% V2.0 C++ ANN KD-Tree for NN-searches, feature size edgefunction, and general improvements by Keith Roberts July 2017.
+%      polygonal selection tool for floodplain meshing by KJR 2017-April-2017-June
+% V2.0 C++ ANN KD-Tree for NN-searches, feature size edgefunction, and general improvements by KJR July 2017.
 % V2.x Making bathyfiles, feature size and CFL limiter options more general, small changes in distmesh2d. WJP Aug 2017
-% V3.0 Using topotoolbox to manage DEM, confluence scale, more robust outer polygon formation. by KJR late Aug 2017 
-%
+% V2.5 Can loop through more than one dataset,improvements to DEM handling and channel scale edge function, improvements to the feature size function.
+%      improvements to clipping algorithm to form outer-polygon (now using SutherlandHodgman algorithm).
+%      Corrections in the fd (distance function) to avoid problems with inpoly. KJR Aug 2017.
+
 % Reference for wavelength and slope function:
 % Lyard, F., Lefevre, F., Letellier, T., & Francis, O. (2006).
 % Modelling the global ocean tides: modern insights from FES2004.
 % Ocean Dynamics, 56(5�6), 394�415. http://doi.org/10.1007/s10236-006-0086-x
 %
 % Reference for feature size function:
-% A MATLAB MESH GENERATOR FOR THE TWO-DIMENSIONAL FINITE ELEMENT METHOD
-% Jonas Koko
-%% BuildDEM 
+% A MATLAB MESH GENERATOR FOR THE TWO-DIMENSIONAL FINITE ELEMENT METHOD: Jonas Koko
+%% BuildDEM
 % Read in the GeoTIFF/ERSI ASCII text file as a DEM object
 disp('Building DEM object...');
-DEM        = GRIDobj(bathyfile{DriverCounter});
-DEMc       = DEM.crop(bbox(1,:),bbox(2,:));
-clearvars DEM                                                              %--release full DEM since no longer necessary after cropping.
-info(DEMc)                                                                 %--print out information regarding cropped dem
-[lon,lat]  = DEMc.getcoordinates;
-bbox=[min(lon) max(lon);min(lat) max(lat)];                                %--update bbox coorindates based on data availability 
-lat = flipud(lat);                                                         %--must be monotonic for gridded interpolant
-[lon_g,lat_g] = ndgrid(lon(:),lat(:));                                     % must be in ndgrid format for gridded interpolant
-bathy      = flipud(DEMc.Z)';                                              %--data in DEMObj struct is ordered from top left to bottom right...
-                                                                           %--We need bottom right to top left so flip upsidedown and then transpose.
-bathyres   = DEMc.cellsize;
+if exist(bathyfile{DriverCounter}, 'file') == 2
+    DEM           = GRIDobj(bathyfile{DriverCounter});
+    DEMc          = DEM.crop(bbox(1,:),bbox(2,:));
+    clearvars DEM                                                              %--release full DEM since no longer necessary after cropping.
+    info(DEMc)                                                                 %--print out information regarding cropped dem
+    [lon,lat]     = DEMc.getcoordinates;
+    lat           = flipud(lat); 
+    [lon_g,lat_g] = ndgrid(lon(:),lat(:));                                     % must be in ndgrid format for gridded interpolant
+    bathy         = DEMc.Z;
+    bathy         = flipud(bathy)';
+    bathy(bathy==-9999)=NaN;
+    bathyres      = DEMc.cellsize;
+end
 
-%--fill in NaNs with srtm15+, 
-if ~isempty(find(isnan(bathy), 1))
+%--fill in NaNs with srtm15+,
+if ~isempty(find(isnan(bathy), 1)) || isempty(bathy)
     if length(bathyfile) > 1
         disp('INFO: Filling NaNs from bathyfile fix...')
         lond = double(ncread(bathyfile{end},'lon'));
@@ -89,24 +96,23 @@ if ~isempty(find(isnan(bathy), 1))
         [lon_gd,lat_gd] = ndgrid(lond,latd);
         Fb_fix = griddedInterpolant(lon_gd,lat_gd,bathyFIX);
         bathy(isnan(bathy)) = Fb_fix(lon_g(isnan(bathy)),lat_g(isnan(bathy)));
+        if(isempty(lon_g))
+            disp('WARNING: No data in bounding box! Filling with SRTM15+...');
+            lon = lond;
+            lat = latd;
+            lon_g = lon_gd;
+            lat_g = lat_gd;
+            bathyres = abs(lon(2)-lon(1));
+        end
         clearvars lond latd Id Jd bathyFIX lon_gd lat_gd Fb_fix
     else
         disp('WARNING: Some NaNs in the bathy but no secondary bathy provided')
     end
 end
-Fb = griddedInterpolant(lon_g,lat_g,bathy);%-->used in floodplain meshing 
-%% Process shapefile 
-%--Read the mesh if it is present (this assumes we are meshing the floodplain.
-%--or read the contourfile if that is present (assumes we are meshing coastal region)
-% if(isempty(contourfile)) 
-%     disp('No contour file was provided, creating one from DEM...');
-%     dmy=GRIDObj(lon_g,lat_g,bathy); 
-%     DEMzero=dmy.contour([0,0]); 
-%     shapewrite(DEMzero,'dummy.shp'); 
-%     clearvars DEMzero dmy
-%     contourfile={'dummy.shp'};
-% end
-
+if(isempty(meshfile))
+    bathy(bathy>=0.1)=NaN; %--> this is done to ensure wavelength and slope doesn't min out on coastline.
+end
+%% Process shapefile
 if ~isempty(meshfile)
     % Flooplain ----------------------------------------------------------
     disp('Reading the mesh...');
@@ -139,8 +145,9 @@ if ~isempty(meshfile)
     % make fixp = to the segment
     fixp  = segment;
     fixp  = fixp(~any(isnan(fixp),2),:);
-    toc
-elseif ~isempty(contourfile)
+end
+
+if ~isempty(contourfile)
     % Coastal ----------------------------------------------------------
     % Make the bounding box 5 x 2 matrix in clockwise order
     boubox = [bbox(1,1) bbox(2,1); bbox(1,1) bbox(2,2); ...
@@ -173,10 +180,7 @@ elseif ~isempty(contourfile)
         ocean_only = 1;
         disp('INFO: Meshing the open ocean, no land or island segments present within bbox...');
     end
-    % template to remove vertical/horizontal artifacts from shapefile
-    %     polygon_struct.outer(abs(polygon_struct.outer(:,1)- 78.00000) < 0.0001,1) = -9999;
-    %     polygon_struct.outer(abs(polygon_struct.outer(:,1)- 78.00000) < 0.0001,2) = -9999;
-    %     polygon_struct.outer(polygon_struct.outer(:,1)==-9999,:) = [];
+    
     if plot_on >= 1
         bufx = 0.2*(bbox(1,2) - bbox(1,1));
         bufy = 0.2*(bbox(2,2) - bbox(2,1));
@@ -189,11 +193,12 @@ elseif ~isempty(contourfile)
             m_plot(polygon_struct.inner(:,1),polygon_struct.inner(:,2),...
                 'm-','linewi',2); hold on;
         end
-        m_plot(boubox(:,1),boubox(:,2),'k-o','linewi',2,'MarkerSize',15); 
+        m_plot(boubox(:,1),boubox(:,2),'k-o','linewi',2,'MarkerSize',15);
         m_grid('xtick',10,'tickdir','out','yaxislocation','left','fontsize',7);
         %m_gshhs_i('color','b');       % Coastline...
         set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]);
     end
+    
     % Cornerify: create artifical outer bounding box to turn segment into
     % polygon. Lets test for this automatically
     if ~closed && ~ocean_only
@@ -203,6 +208,7 @@ elseif ~isempty(contourfile)
         polygon_struct.outer(:,1) = lo; polygon_struct.outer(:,2) = la;
     end
     if plot_on >=1
+        close all;
         m_proj('Mercator','long',[bbox(1,1) - bufx, bbox(1,2) + bufx],...
             'lat', [bbox(2,1) - bufy, bbox(2,2) + bufy])
         hold on;
@@ -211,7 +217,7 @@ elseif ~isempty(contourfile)
             m_plot(polygon_struct.inner(:,1),polygon_struct.inner(:,2),'m');
         end
         if ml == 1
-            m_plot(polygon_struct.mainland(:,1),polygon_struct.mainland(:,2),'k-.')
+            m_plot(polygon_struct.mainland(:,1),polygon_struct.mainland(:,2),'k-')
         end
         m_plot(boubox(:,1),boubox(:,2),'k','linewi',2);
         %m_patch(polygon_struct.outer(:,1),polygon_struct.outer(:,2),'b','FaceColor','b','FaceAlpha',.5); % ...with hatching added.
@@ -219,7 +225,7 @@ elseif ~isempty(contourfile)
         %m_gshhs_i('color','b'); % Coastline for reference...
         m_grid('xtick',10,'tickdir','out','yaxislocation','left','fontsize',7);
         set(gcf, 'Units', 'Normalized', 'OuterPosition', [0 0 1 1]);
-        title('Meshing filled area...press 1 to accept or 0 to abort...');
+        title('Meshing the union of the filled areas...press 1 to accept or 0 to abort...');
         save(['PG_',outfiname,'.mat'], 'polygon_struct','ocean_only' ,'inr' ,'oc','ml', 'poly_count')
         ierr = abort(1); if ierr==1; return; end
     end
@@ -227,67 +233,40 @@ else
     % you have already run in interactive mode just load the polygon_struct
     disp(['INFO: Neither the contourfile or the meshfile were provided, '...
         'trying to load in the polygon_struct from a previous interactive session...']);
-    if exist(['PG',outfiname],'file')
-        load(['PG',outfiname])
+    if exist(['PG_',outfiname,'.mat'],'file')
+        disp(['INFO: Loading in polygon_structure: PG_',outfiname,'.mat'])
+        load(['PG_',outfiname,'.mat'])
     else
-        disp('polygon_struct does not exist, exiting OceanMesh2D')
+        disp('FATAL: polygon_struct does not exist, exiting...')
         return;
     end
 end
+%% Build KD-Trees
+% For the distance function used to calculate edgelength function
+if ~ocean_only
+    disp('Building KD-Tree (mdl1) with mainland and island segments...');
+    c_pts = [polygon_struct.inner; polygon_struct.mainland];
+    c_pts(isnan(c_pts(:,1)),:) = [];
+    mdl1  = ann(c_pts');
+else
+    mdl1 = [];
+end
 
-%--Make the distance kdtree searchers and interpolants
-if ~isempty(meshfile) %% Floodplain mesh ---------------------------------
-    % For distance function used to calculate edgelength function
-    disp('Building KD-Tree (mdl1) with land boundary segments...');
-    poly =  segment;
-    poly(isnan(poly(:,1)),:) = [];
-    mdl1 = ann(poly');
-    poly = [];
-    
-    % For floodplain prompt to draw a smaller bounding polygon to mesh within
-    figure;
-    d_x = ceil(length(I)/100); % ensure only size 100 x 100
-    d_y = ceil(length(J)/100); % ensure only size 100 x 100
-    plot(lon_g(1:d_x:end,1:d_y:end),...
-        lat_g(1:d_x:end,1:d_y:end),'m.') % bathymetry data availability within bbox
-    hold on; plot(segment(:,1),segment(:,2),'r'); % mainland boundary
-    disp(['Please draw the outer bounding polygon that ' ...
-        'partially encompasses the mainland boundary...']);
-    h = impoly();
-    floodplain_polygon = h.getPosition;
-    poly = [segment; floodplain_polygon];
+% For distance function used to determine whether points and elements
+% are inside the region you want to mesh
+disp('Building KD-Tree (mdl0) with ocean boundary, mainland, and island segments...');
+if ~ocean_only
+    poly = [polygon_struct.outer; NaN NaN; ...
+            polygon_struct.inner];
     poly(isnan(poly(:,1)),:) = [];
     mdl0 = ann(poly');
     poly = [];
-    
-else %% Coastal Mesh ------------------------------------------------------
-    % For the distance function used to calculate edgelength function
-    if ~ocean_only
-        disp('Building KD-Tree (mdl1) with mainland and island segments...');
-        c_pts = [polygon_struct.inner; polygon_struct.mainland];
-        c_pts(isnan(c_pts(:,1)),:) = [];
-        mdl1  = ann(c_pts');
-    else
-        mdl1 = [];
-    end
-    
-    % For distance function used to determine whether points and elements
-    % are inside the region you want to mesh
-    disp('Building KD-Tree (mdl0) with ocean boundary, mainland, and island segments...');
-    if ~ocean_only
-        poly = [polygon_struct.outer; NaN NaN; ...
-            polygon_struct.inner];
-        poly(isnan(poly(:,1)),:) = [];
-        mdl0 = ann(poly');
-        poly = [];
-    else
-        poly = polygon_struct.outer;
-        poly(isnan(poly(:,1)),:) = [];
-        mdl0 = ann(poly');
-        poly = [];
-    end
+else
+    poly = polygon_struct.outer;
+    poly(isnan(poly(:,1)),:) = [];
+    mdl0 = ann(poly');
+    poly = [];
 end
-
 %% BuildEgFx
 % Make edge function interpolant
 if ~isempty(edgefx)
@@ -312,20 +291,24 @@ else
         d = fd( [x_v,y_v], 1 ) ;
         % reshape back
         d = reshape(d,size(lon_g,1),[]);
-        
+        nearshore = d > -0.01 & d < eps;
         if min_el > 0
             %--including feature size ------------------------------------
             disp('   using feature size function...');
             %---calculate the gradient of the distance function.
             [ddx,ddy] = gradient(d,bathyres);
             d_fs = sqrt(ddx.^2 + ddy.^2);
-            
             %---find singularties in the distance function that are
-            %---within the poly to get the medial axis
+            %---within the poly to get the medial axis.
+            %---Lets only create medial points in places that are
+            %---sufficiently far away from the coastline to capture the
+            %---feature and thus aren't suprious.
             d_fs = reshape(d_fs,[],1); d = reshape(d,[],1);
-            x_kp = x_v(d_fs < 0.9 & d < 0 );
-            y_kp = y_v(d_fs < 0.9 & d < 0 );
-            
+            x_kp = x_v(d_fs < 0.90 & d < -eps); %-2*bathyres);
+            y_kp = y_v(d_fs < 0.90 & d < -eps); %-2*bathyres);
+            if(plot_on >=2)
+                hold on; m_plot(x_kp,y_kp,'r.');% plot the medial points
+            end
             % Now get the feature size along the coastline
             [~, dPOS] = WrapperForKsearch([x_kp,y_kp]',[x_v,y_v]');
             % reshape back
@@ -334,12 +317,15 @@ else
             % coastline. We put the dist_param on d to make size larger
             % from coastline. min_el is then feature_size*2/R where R is
             % number of elements to model the feature
-            hh(:,:,nn) = 2*(dPOS-(1+dist_param)*d)/4;
+            fs = (2*(dPOS-d))/3;
+            fs(nearshore & fs >  max_el_ns)=  max_el_ns; %--enforce near shore max ele
+            hh(:,:,nn) = fs; %(2*(dPOS-d))/3;
             clear x_kp y_kp d_fs dPOS
-        else
+        elseif min_el < 0
             disp('   not using feature size function...');
             % add into edge function
             hh(:,:,nn) = abs(min_el) - dist_param*d ;
+            
         end
         
         % Plot the edgelength function for distance
@@ -401,25 +387,25 @@ else
         % Calculate the gradient of bathy
         [b_y,b_x] = gradient(bathy,dy,dx); clearvars dx dy
         b_slope = sqrt(b_x.^2 + b_y.^2); clearvars b_x b_y
-        
         % slope func
         hh(:,:,nn) = abs(2*pi*bathy./b_slope/slope_param);
-        clear lon2 lat2 b_slope 
-        clearvars dx dy d nv k 
+        clear lon2 lat2 b_slope
+        clearvars dx dy d nv k
     end
     
     %--channel scale
-    if(confluence_scale > 0)
+    if(channel_param > 0)
         disp('   Building the confluence scale edge function...');
         nn=nn+1;
-        %DEMf          = fillsinks(DEMc);%--must fill sinks
-        FD            = FLOWobj(DEMc,'preprocess','carve');%--create flow obj
-        A             = flowacc(FD);%-n cells draining into cell ie MFD algo.
-        A             = dilate(sqrt(A),ones(5));%\this enlarges the features to better capture on the scales we're interested in.
-        confluence_scale = abs(DEMc.Z)/A; % volume of cell divided by upslope area 
-        confluence_scale.Z(confluence_scale.Z<eps) = NaN; %--can't divide by zero below
-        channel_param = (min_el*111000)/prctile(confluence_scale.Z(:),0.04); %--numerator is the mininum element size in meters. Demoninator has to be representative of flow scale that gets min_el.
-        hh(:,:,nn)    = flipud(confluence_scale.Z)'*channel_param;
+        DEMc          = DEMc.elevateminima;                %--get rid of regional sinks
+        FD            = FLOWobj(DEMc,'preprocess','carve');%--create flow obj and carve dem to fill in local sinks.
+        A             = flowacc(FD);                       %--n cells draining into cell ie SFD algo.
+        A             = dilate(A,ones(3));                 %-- enlarges the features to better capture on the scales we're interested in.
+        channels = abs(DEMc.Z)/A;                          %--volume of cell divided by upslope area
+        channel_norm = (min_el*111000)/channel_param ;%0.50e-6; %prctile(confluence_scale.Z(:),0.04); %--numerator is the mininum element size in meters. Demoninator has to be representative of flow scale that gets min_el.
+        hh(:,:,nn)    = flipud(channels.Z)'*channel_norm;           %--normalize it so the min_el corresponds to a specific scale.
+        
+        
         if plot_on >= 2
             figure;
             m_proj('Mercator','long',[bbox(1,1) bbox(1,2)],'lat',[bbox(2,1) bbox(2,2)]);
@@ -433,7 +419,7 @@ else
     end
     
     
-%% EnforceBounds 
+    %% EnforceBounds
     % Get min of slope, wavelength and channel scale, setting equal to hh_m
     if wl_param > 0 || slope_param > 0
         if dist_param > 0 && ~ocean_only % dist param is already in degrees
@@ -562,7 +548,7 @@ if isempty(fix_p)
     tq=gettrimeshquan(p,t);%kjr 20170806
     t(abs(tq.qm)<0.10,:) = [];
     [p,t] = direct_smoother_lur(p,t);
-    [p,t] = Fix_bad_edges_and_mesh(p,t,1);
+    [p,t] = Fix_bad_edges_and_mesh(p,t,0);
 end
 tq = gettrimeshquan( p, t);
 mq_m = mean(tq.qm);
@@ -589,6 +575,7 @@ return;
         dis = fd(pmid,2);
         t = t(dis < 0,:);   % Keep interior triangle
         [p,t] = fixmesh(p,t); % clean up disjoint vertices.
+        %TODO CURRENTLY BROKEN
     end
 
 
@@ -597,46 +584,37 @@ return;
         if instance == 0
             % used for kicking points out of the box.
             % mdl0 CONTAINS the ocean boundary
-            if ~isempty(meshfile)
-                d = dpoly_fp2(p,mdl0,polygon,floodplain_polygon,Fb,[]);
-            else
-                poly = polygon_struct.outer;
-                if ~isempty(polygon_struct.inner)
-                    poly = [poly; NaN NaN; polygon_struct.inner];
-                end
-                d = dpoly(p,poly,mdl0,num_p,poly);
+            poly = polygon_struct.outer;
+            if ~isempty(polygon_struct.inner)
+                poly = [poly; NaN NaN; polygon_struct.inner];
             end
+            d = dpoly(p,poly,mdl0,num_p,poly);
             % IF OUTSIDE BUT APPEARS INSIDE
             bad = find((p(:,1) < bbox(1,1) | p(:,1) > bbox(1,2) | ...
                 p(:,2) < bbox(2,1) | p(:,2) > bbox(2,2)) & d < 0);
             
             if ~isempty(bad)
-                d(bad) = -d(bad);              
+                d(bad) = -d(bad);
             end
             
         elseif instance == 1
             % used for the creation of the distance function (sans ocean bou).
             % mdl1 does NOT contain the ocean boundary
-            if ~isempty(meshfile)
-                d = dpoly_fp2(p,mdl1,polygon,floodplain_polygon,[],[]);
-            else
-                poly = polygon_struct.outer;
-                if ~isempty(polygon_struct.inner)
-                    poly = [poly; NaN NaN; polygon_struct.inner];
-                end
-                d = dpoly(p,poly,mdl1,num_p,[polygon_struct.inner; polygon_struct.mainland]);
+            poly = polygon_struct.outer;
+            if ~isempty(polygon_struct.inner)
+                poly = [poly; NaN NaN; polygon_struct.inner];
             end
+            d = dpoly(p,poly,mdl1,num_p,[polygon_struct.inner; polygon_struct.mainland]);
+            % IF INSIDE BUT APPEARS OUTSIDE
+            %--sometimes inpoly fails, have to test points that may be
+            %--wrong
             bad = find((p(:,1) >= bbox(1,1) | p(:,1) <= bbox(1,2) | ...
                 p(:,2) >= bbox(2,1) | p(:,2) <= bbox(2,2)) & d > 0);
-            
-            if ~isempty(bad)
+            %             [in]=inpolygon(p(bad,1),p(bad,2),poly(:,1),poly(:,2));
+            %             bad(~in)=[];
+            if nnz(bad) > 0
                 d(bad) = -d(bad);
             end
-            
-            
-        else
-            % only used for floodplain meshing
-            d = dpoly_fp2(p,mdl1,polygon,floodplain_polygon,Fb,bounds);
         end
         return ;
     end
@@ -689,45 +667,94 @@ return;
 
 
     function [clippedPolygon] = cornerify(segment,boubox)
-        % INPUTS: segment: A segment stored as an n x 2 array with the x,y coordinates--last entry are NaNs
-        %         boubox:  An 5x2 array containing the x,y locations of the corners
-        %         of the bounding box in clockwise order.
+        % INPUTS: segment: A segment/polygon or many segments or many polygons stored as an n x 2 array with the x,y coordinates--last entry are NaNs
+        %         boubox:  An 5x2 array containing the x,y locations of the
+        %         corners of the region you want to mesh.
         % OUTPUTS: An array of n x 2 size containing the x,y coordinates of the
         %          region that represents the extent of the intersection between segment and boubox.
         
-        %--INFO: This algorithm closes a segment to form a polygon so we can
+        %--INFO: This algorithm closes segment(s) to form polygon(s) so we can
         % perform polygon clipping using the Sutherland-Hodgman algorithm.
+        % This gives an outer polygon for the distmesh algorithm to work.
         % Sutherland-Hodgman algorithm source:
         % https://rosettacode.org/wiki/Sutherland-Hodgman_polygon_clipping#MATLAB_.2F_Octave
         %--kjr 2017, UND.
         %
-        lidx   = find(isnan(segment(:,1))); %--find longest segment.
-        lidx = [0;lidx];
-        [~,li] = max(diff(lidx));
+        lidx   = find(isnan(segment(:,1))); %--find segments.
+        lidx   = [1;lidx];
+        outer  = []; clippedPolygon = [];
+        disp('There are some segments that must be closed. We will display the segments on a map, then follow the prompt...');
         
-        st = lidx(li)+1;
-        ed = lidx(li+1)-1;
-        hold on; m_text(segment(st,1),segment(st,2),'Start','FontSize',60);
-        hold on; m_text(segment(ed-1,1),segment(ed-1,2),'End','FontSize',60);
-        for corn = 1 : 4
-            hold on; m_text(boubox(corn,1),boubox(corn,2),num2str(corn),'fontsize',60);
-        end
-        fprintf(1,[...
-            ' INFO: From the ending point, you need to reach the starting point  \n',...
-            ' 1. how many corners need to be added to do this (normally 1, 2 or 3) \n',...
-            ' 2. enter their numbers as seen on figure-- \n']);
-        noCorn=input('Enter number of corners to add:');
-        for zz = 1 : noCorn
-            sel(zz)=input('Enter corner number):');
-        end
-        outer = [segment(st:ed-1,:)
-                 boubox(sel,:)
-                 segment(st,:)];
-        disp('Clipping polygons...');
-        %--Coordinates have to be positive..
-        clippedPolygon = sutherlandHodgman(abs(outer),abs(boubox));
-        clippedPolygon(:,1) = -clippedPolygon(:,1);
-        clippedPolygon = [clippedPolygon;clippedPolygon(1,:);NaN,NaN];
+        for noSegs = 1 : length(lidx)-1
+            close all;
+            if(noSegs==1)
+                st = 1;
+            else
+                st = lidx(noSegs)+1;
+            end
+            ed = lidx(noSegs+1);
+            % if a poly, then add it to outer but don't try to close it.
+            if segment(st,1) == segment(ed-1,1) || segment(st,2) == segment(ed-1,2)
+                clippedPolygon = [clippedPolygon; segment(st:ed-1,:); NaN,NaN];
+                disp('Found a polygon, continuing...');
+                fprintf(1,' ------------------------------------------------------->\n') ;
+                fprintf(1,' ------------------------------------------------------->\n') ;
+                continue
+            end
+            tbbox = [min(segment);max(segment)]';
+            tbufx = 0.2*(tbbox(1,2) - tbbox(1,1));
+            tbufy = 0.2*(tbbox(2,2) - tbbox(2,1));
+            m_proj('Mercator','long',[tbbox(1,1) - tbufx, tbbox(1,2) + tbufx],...
+                'lat',[tbbox(2,1) - tbufy, tbbox(2,2) + bufy]);
+            m_plot(boubox(:,1),boubox(:,2),'k','linewi',2);
+                        m_grid('xtick',10,'tickdir','out','yaxislocation','left','fontsize',7);
+
+            %[~,li] = max(diff(lidx));
+            %st = lidx(li)+1;
+            %ed = lidx(li+1)-1;
+            hold on; m_text(segment(st,1),segment(st,2),'Start','FontSize',15);
+            hold on;m_plot(segment(st,1),segment(st,2),'rx','MarkerSize',15);
+            hold on;m_text(segment(ed-1,1),segment(ed-1,2),'End','FontSize',15);
+            hold on;m_plot(segment(ed-1,1),segment(ed-1,2),'rx','MarkerSize',15);
+            hold on;m_plot(segment(:,1),segment(:,2),'k-'); 
+            hold on;m_plot(segment(st:ed-1,1),segment(st:ed-1,2),'b','linewi',2);
+            for corn = 1 : 4
+                hold on;m_text(boubox(corn,1)-0.001,boubox(corn,2)+0.001,num2str(corn),'fontsize',15);
+            end
+            fprintf(1,[...
+                ' INFO: From the ending point, you need to reach the starting point  \n',...
+                ' 1. how many corners need to be added to do this (0, 1, 2, 3, 4) \n',...
+                ' 2. If non-zero, enter their numbers as seen on figure-- \n']);
+            noCorn=input('Enter number of corners to add:');
+            sel = [];
+            for zz = 1 : noCorn
+                sel(zz)=input('Enter corner number):');
+            end
+            % if no corners, then just connect segment's end with its start.
+            if isempty(sel)
+                tempOuter = [segment(st:ed-1,:)
+                    segment(st,:)];
+            else
+                tempOuter = [segment(st:ed-1,:)
+                    boubox(sel,:)
+                    segment(st,:)];
+            end
+            disp('Clipping polygon with the bounding box...');
+            %--Coordinates have to be positive..
+            tempclippedPolygon = sutherlandHodgman(abs(tempOuter),abs(boubox));
+            tempclippedPolygon(:,1) = -tempclippedPolygon(:,1);
+            tempclippedPolygon = [tempclippedPolygon;tempclippedPolygon(1,:); NaN,NaN];
+            
+            clippedPolygon = [clippedPolygon; tempclippedPolygon];
+            tempOuter = [];
+            fprintf(1,' ------------------------------------------------------->\n') ;
+            fprintf(1,' ------------------------------------------------------->\n') ;
+        end        
+        %         disp('Clipping polygons...');
+        %         %--Coordinates have to be positive..
+        %         tempclippedPolygon = sutherlandHodgman(abs(outer),abs(boubox));
+        %         tempclippedPolygon(:,1) = -tempclippedPolygon(:,1);
+        %         tempclippedPolygon = [tempclippedPolygon;tempclippedPolygon(1,:);NaN,NaN];
     end
 %%
 

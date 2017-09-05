@@ -24,7 +24,7 @@ else
     for i = 1 : length(Isnan) - 1
         iseg = segment(Isnan(i)+1:Isnan(i+1)-1,:);
         if ~isempty(iseg)
-            if iseg(1,1) == iseg(end,1)
+            if iseg(1,1) == iseg(end,1) && iseg(1,2) == iseg(end,2)
                 % Is polygon so need pad to make cyclic
                 iseg = [iseg(end-floor(window/2):end,:); iseg; ...
                         iseg(1:floor(window/2),:)];
