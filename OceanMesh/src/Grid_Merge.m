@@ -14,6 +14,7 @@ function [pm,tm]=Grid_Merge(mesh1,mesh2,opoly)
 % tm: nt x 3 matrix representing the 2-d simplices.
 % kjr, und, chl, sept. 2017 Version 1.0.
 pg=load(opoly);
+poly=[pg.polygon_struct.outer;NaN NaN;pg.polygon_struct.inner];
 
 mesh{1}=load(mesh1);
 p1=mesh{1}.p;
@@ -28,8 +29,8 @@ disp('Merging meshes...')
 disp('Pruning outer triangles...')
 % prune triangles outside the domain. 
 pmid = (pm(tm(:,1),:)+pm(tm(:,2),:)+pm(tm(:,3),:))/+3;
-[edges]=Get_poly_edges([polygon_struct.outer;NaN NaN;polygon_struct.inner]);
-in=inpoly(pmid,[pg.polygon_struct.outer;NaN NaN;pg.polygon_struct.inner],edges);
+[edges]=Get_poly_edges(poly);
+in=inpoly(pmid,poly,edges);
 tm(~in,:) = [];
 
 disp('Cleaning up')
@@ -40,8 +41,8 @@ nn = get_small_connectivity(pm,tm); pm(nn,:)= [];
 
 % prune triangles outside the domain agaiin.
 pmid = (pm(tm(:,1),:)+pm(tm(:,2),:)+pm(tm(:,3),:))/+3;
-[edges]=Get_poly_edges([polygon_struct.outer;NaN NaN;polygon_struct.inner]);
-in=inpoly(pmid,[polygon_struct.outer;NaN NaN;polygon_struct.inner],edges);
+[edges]=Get_poly_edges(poly);
+in=inpoly(pmid,poly,edges);
 tm(~in,:) = [];
 
 % clean up some more to avoid non-unique boundary edges.
