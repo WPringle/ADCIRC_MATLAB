@@ -21,16 +21,15 @@ end
 function [p,t] = delete_elements_outside_main_mesh(p,t,nscreen)
 %% Delete all elements outside the main mesh
 t1 = t; t = []; L = length(t1); close all;
-max_lim = 100; % sometimes the random element was a bad choice in this case, we may never converge. break out and try again in this case. kjr
+max_lim = 10; % sometimes the random element was a bad choice in this case, we may never converge. break out and try again in this case. kjr
 while 1
     % Give a random element not outside main mesh
     EToS =  randi(length(t1),1);
     min_del = L;
     counter = 0;
     while 1
-        % Get connectivity
-        %EToE = Connect2D(t1);
-        [EToE,xadj] = EleToEle(t1); 
+        % Get connectivity if it changed or first time.
+        [EToE,xadj] = EleToEle(t1);
         
         % Traverse grid deleting elements outside
         ic = zeros(ceil(sqrt(length(t1))*2),1);
@@ -68,7 +67,10 @@ while 1
         end
         
         counter = counter + 1;
-        if(counter >= max_lim); disp('ALERT: TOO MANY ITERATIONS...RESTARTING');break; end; % kjr
+        if(counter >= max_lim)
+            disp('ALERT: TOO MANY ITERATIONS...RESTARTING');
+            break; 
+        end; 
         
         if nnz(find(nflag == 0))/length(t1) < 0.5 || ...
                 nnz(find(nflag == 0)) == min_del
@@ -84,7 +86,7 @@ while 1
     % adding to the triangulation
     t = [t; t1(nflag == 1,:)];
     % deciding whether portion is small enough to exit loop or not
-    if nnz(find(nflag == 0))/L < 0.01
+    if nnz(find(nflag == 0))/L < 0.05
         disp(['ACCEPTED: deleting ' num2str(length(find(nflag == 0))) ...
             ' elements outside main mesh']) ;
         break
@@ -112,21 +114,12 @@ while 1
     if length(etbv) == length(vxe); break; end
     %
     % Get all nodes that are on edges
-    nodes_on_edge = unique(etbv(:));
-    %
+    [nodes_on_edge,~,n] = unique (etbv(:));
     % Count how many edges a node appears in
-    N = numel(nodes_on_edge);
-    count = zeros(N,1);
-    for k = 1:N
-        %ok=etbv(:) == nodes_on_edge(k);
-        ok=ismember(etbv(:),nodes_on_edge(k));
-        count(k)  = nnz(ok); 
-        %count(k) = numel(find(ok));
-        %count(k) = sum(ok);
-    end
+    I = accumarray(n,1:numel(n),[],@(x){x});
+    count=cellfun('length',I);
     %
     [vtoe,nne] = VertToEle(t);
-    %[ nne, vtoe ] = NodeConnect2D( t );
     % Get the nodes which appear more than twice and delete element connected
     % to this nodes where all nodes of element are on boundary edges
     del_elem_idx = [];
@@ -134,11 +127,16 @@ while 1
         con_elem = vtoe(1:nne(i),i);
         n = 0; del_elem = [];
         for elem = con_elem'
-            I = find(etbv(:) == t(elem,1), 1);
-            J = find(etbv(:) == t(elem,2), 1);
-            K = find(etbv(:) == t(elem,3), 1);
+            %I = find(etbv(:) == t(elem,1), 1);
+            %J = find(etbv(:) == t(elem,2), 1);
+            %K = find(etbv(:) == t(elem,3), 1);
+             I = etbv(:) == t(elem,1); 
+             J = etbv(:) == t(elem,2); 
+             K = etbv(:) == t(elem,3); 
+
             % all nodes on element are boundary edges
-            if ~isempty(I) && ~isempty(J) && ~isempty(K)
+            %if ~isempty(I) && ~isempty(J) && ~isempty(K)
+            if any(I) && any(J) && any(K) 
                 n = n + 1;
                 del_elem(n) = elem;
             end
