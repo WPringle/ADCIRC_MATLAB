@@ -80,7 +80,7 @@ while 1
             
         else
             min_del = min(min_del,nnz(find(nflag == 0)));
-            EToS = find(nflag == 0); EToS = EToS(1);
+            EToS = find(nflag == 0); EToS = EToS(randi(length(EToS)));
         end
     end
     % adding to the triangulation
