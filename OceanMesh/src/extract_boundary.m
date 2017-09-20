@@ -2,7 +2,9 @@ function [poly,poly_idx,opendat,boudat] = extract_boundary(v_start,v_end,bnde,pt
 % DESCRIPTION: Given a set of boundary edges and a starting and ending index 
 %              of a singly- or multi-polygonal region, organize them in a 
 %              winding order and/or add them to an existing opendat/boudat
-%              structure.
+%              structure. The program breaks up the boundary so that it
+%              will never exceed 100,000 nodes to avoid memory allocation
+%              issues in adcprep.
 %
 % INPUTS:
 %      v_start: the starting index of the boundary you want to trace
@@ -12,12 +14,15 @@ function [poly,poly_idx,opendat,boudat] = extract_boundary(v_start,v_end,bnde,pt
 %               stored as an np x 2 matrix.
 %         order:the order in which the traversal takes place
 %               counter-clockwise (0) or clockwise (1).
-
+%       opendat:open boundary information from a pre-existing grid
+%        boudat:land boundary information from a pre-exist
 % OUTPUTS:
 %          poly: the boundary of each enclosing polygon sorted in winding-order
 %                poly is returned as a cell-array of length number of polys.
 %      poly_idx: indices of the polygon coordinates in the same format as
 %                poly
+%       opendat: open boundary information appened onto passed opendat
+%       boudat: land boundary information appended onto passed boudat
 %
 % kjr,UND,CHL,2017
 %
@@ -32,48 +37,68 @@ bnde= unique(bnde,'rows');
 active = true(size(bnde,1),1);
 p = 0;
 
-p = p + 1;
 [rt,dmy] = find(v_start==bnde);
-r  = rt(1); 
+r  = rt(1); % change this only here to from 1 to 2 or 2 to 1 to go left or right
 tsel = bnde(r,:); 
 sel  = tsel(tsel~=v_start);
 v_next = sel; 
 active(r) = 0;
-
-temp  = pts(bnde(r,:)',:);
-temp2 = bnde(r,:)';
-k = 2;
-while v_next~=v_end % terminates when we reach v_end
-    rt= (v_next==bnde(:,1) | v_next==bnde(:,2)) &  active;
-    %r = cumsum(rt,1)==1 & rt;
-    r = find(rt,1);
-    tsel = bnde(r,:); 
-    sel=tsel(tsel~=v_next);
-    k = k + 1;
-    temp(k,:)= pts(sel,:);
-    temp2(k,:)= sel;
-    active(r) = 0;
-    v_next = sel;
-    % exhausted all edges and couldn't connect
-    if(~any(active)), break, end
-end
-poly{p}     = temp;
-poly_idx{p} = temp2;
-[area]=parea(poly{p}(:,1),poly{p}(:,2));
-if(order==0) % ccw
-    if sign(area)<0
-        poly{p} = flipud(poly{p});
-        poly_idx{p} = flipud(poly_idx{p});
+% cut up boundary so land boundary never exceeds 100k nodes.
+cut = true;
+while cut 
+    p = p + 1;
+    if(p > 1 )
+        [rt,dmy] = find(v_next==bnde & active);
+        r  = rt(1); 
+        tsel = bnde(r,:);
+        sel  = tsel(tsel~=v_next);
+        v_next = sel;
+        active(r) = 0;
     end
-else % cw
-    if sign(area)>0
-        poly{p} = flipud(poly{p});
-        poly_idx{p} = flipud(poly_idx{p});
+        
+    temp = []; 
+    temp2= [];
+    
+    temp  = pts(bnde(r,:)',:);
+    temp2 = bnde(r,:)';
+    k = 2;
+    while v_next~=v_end % terminates when we reach v_end
+        rt= (v_next==bnde(:,1) | v_next==bnde(:,2)) &  active;
+        r = find(rt,1);
+        tsel = bnde(r,:);
+        sel=tsel(tsel~=v_next);
+        k = k + 1;
+        temp(k,:)= pts(sel,:);
+        temp2(k,:)= sel;
+        active(r) = 0;
+        v_next = sel;
+        % exceeded max xize, break
+        if(k > 100e3), break, end
+        % reached ending vertex, break
+        if(v_next==v_end), cut=false; end
+        % exhausted all edges and couldn't connect
+        if(~any(active)), cut=false; break, end
+    end
+    poly{p}     = temp;
+    poly_idx{p} = temp2;
+    [area]=parea(poly{p}(:,1),poly{p}(:,2));
+    if(order==0) % ccw
+        if sign(area)<0
+            poly{p} = flipud(poly{p});
+            poly_idx{p} = flipud(poly_idx{p});
+        end
+    else % cw
+        if sign(area)>0
+            poly{p} = flipud(poly{p});
+            poly_idx{p} = flipud(poly_idx{p});
+        end
     end
 end
 figure; 
-plot(pts(bnde(:),1),pts(bnde(:),2),'k.'); hold on; 
-plot(poly{1}(:,1),poly{1}(:,2),'r-','linewi',2); 
+plot(pts(bnde(:),1),pts(bnde(:),2),'k.');
+for ii = 1 : p
+    hold on; plot(poly{ii}(:,1),poly{ii}(:,2),'r-','linewi',2);
+end
 type = input('What kind of boundary is this, 1 (land) or 2 (ocean)?'); 
 if(~isempty(opendat) || ~isempty(boudat))
     if(type==1)
@@ -83,13 +108,13 @@ if(~isempty(opendat) || ~isempty(boudat))
         nvell= boudat.nvell;
         nbvv = boudat.nbvv;
         ibtype = boudat.ibtype;
-        
-        nbou = nbou + 1;
-        nvell(nbou) = length(poly{1}(:,1));
-        nvel = nvel + nvell(nbou);
-        nbvv(1:nvell(nbou),nbou) = poly_idx{1}(:);
-        ibtype(nbou) = 20;
-        
+        for ii = 1 : length(poly)
+            nbou = nbou + 1;
+            nvell(nbou) = length(poly{ii}(:,1));
+            nvel = nvel + nvell(nbou);
+            nbvv(1:nvell(nbou),nbou) = poly_idx{ii}(:);
+            ibtype(nbou) = 20;
+        end
         boudat.nbou = nbou ;
         boudat.nvel = nvel ;
         boudat.nvell = nvell ;
@@ -103,12 +128,13 @@ if(~isempty(opendat) || ~isempty(boudat))
         ibtype=opendat.ibtypee;
         nbdv  = opendat.nbdv;
         
-        nope = nope + 1;
-        nvdll(nope) = length(poly_idx{1}(:,1));
-        neta = neta + nvdll(nope);
-        ibtype(nope) = 0;
-        nbdv(1:nvdll(nope),nope) = poly_idx{1}(:,1);
-        
+        for ii = 1 : length(poly)
+            nope = nope + 1;
+            nvdll(nope) = length(poly_idx{ii}(:,1));
+            neta = neta + nvdll(nope);
+            ibtype(nope) = 0;
+            nbdv(1:nvdll(nope),nope) = poly_idx{ii}(:,1);
+        end
         % ocean boundary
         opendat.nope = nope ;
         opendat.neta = neta ;
