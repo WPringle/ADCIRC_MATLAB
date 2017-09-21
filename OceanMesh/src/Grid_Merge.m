@@ -1,4 +1,4 @@
-function [pm,tm]=Grid_Merge(mesh1,mesh2,opoly)
+function [pm,tm]=Grid_Merge(mesh1,mesh2)
 % Merge 2-d simplex meshes compromised of np vertices and nt triangles
 % contained in the mat files  mesh1 with mesh2
 % Uses a simplified form of the algorithm described in the pulbication
@@ -7,31 +7,58 @@ function [pm,tm]=Grid_Merge(mesh1,mesh2,opoly)
 % INPUTS:
 % mesh1: filename of base mesh.
 % mesh2: filename of mesh to be merged into the base mesh.
-% opoly: filename of polygon structure that encompasses mesh1 and mesh2.
 
 % OUPUTS:
 % pm: np x 2 coordinates of vertices of the merged mesh.
 % tm: nt x 3 matrix representing the 2-d simplices.
 % kjr, und, chl, sept. 2017 Version 1.0.
-pg=load(opoly);
-poly=[pg.polygon_struct.outer;NaN NaN;pg.polygon_struct.inner];
-
 mesh{1}=load(mesh1);
 p1=mesh{1}.p;
+t1=mesh{1}.t; 
 
 mesh{2}=load(mesh2);
 p2=mesh{2}.p;
+t2=mesh{2}.t; 
 
 % merge two meshes p1 replaces the overlap in p2.
 disp('Merging meshes...')
 [pm,tm]=merge_meshes(p1,p2);
 
 disp('Pruning outer triangles...')
-% prune triangles outside the domain. 
+% prune triangles outside both domains. 
 pmid = (pm(tm(:,1),:)+pm(tm(:,2),:)+pm(tm(:,3),:))/+3;
-[edges]=Get_poly_edges(poly);
-in=inpoly(pmid,poly,edges);
-tm(~in,:) = [];
+
+% form outer polygon 1 
+bnde=extdom_edges2(t1,p1); 
+poly1=extdom_polygon(bnde,p1,1); 
+k=0; poly_vec1=[];
+for i = 1 : length(poly1) 
+   for ii = 1 : length(poly1{i}) 
+      k = k + 1; 
+      poly_vec1(k,:) = poly1{i}(ii,:);
+   end
+   k = k + 1; 
+   poly_vec1(k,:) = [NaN,NaN];
+end
+[edges]=Get_poly_edges(poly_vec1);
+in1=inpoly(pmid,poly_vec1,edges);
+
+% form outer polygon 2
+bnde=extdom_edges2(t2,p2); 
+poly2=extdom_polygon(bnde,p2,1); 
+k=0; poly_vec2=[];
+for i = 1 : length(poly2) 
+   for ii = 1 : length(poly2{i}) 
+      k = k + 1; 
+      poly_vec2(k,:) = poly2{i}(ii,:);
+   end
+   k = k + 1; 
+   poly_vec2(k,:) = [NaN,NaN];
+end
+[edges]=Get_poly_edges(poly_vec2);
+in2=inpoly(pmid,poly_vec2,edges);
+
+tm(~in1 & ~in2,:) = [];
 
 disp('Cleaning up')
 % remove triangles w/ small connectivity (valency < 4).
@@ -41,9 +68,17 @@ nn = get_small_connectivity(pm,tm); pm(nn,:)= [];
 
 % prune triangles outside the domain agaiin.
 pmid = (pm(tm(:,1),:)+pm(tm(:,2),:)+pm(tm(:,3),:))/+3;
-[edges]=Get_poly_edges(poly);
-in=inpoly(pmid,poly,edges);
-tm(~in,:) = [];
+
+% form outer polygon 1
+[edges]=Get_poly_edges(poly_vec1);
+in1=inpoly(pmid,poly_vec1,edges);
+
+% form outer polygon 2
+[edges]=Get_poly_edges(poly_vec2);
+in2=inpoly(pmid,poly_vec2,edges);
+
+tm(~in1 & ~in2,:) = [];
+
 
 % clean up some more to avoid non-unique boundary edges.
 [pm,tm]=Fix_bad_edges_and_mesh(pm,tm,0);
