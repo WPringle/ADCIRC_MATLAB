@@ -12,7 +12,6 @@ function d = dpoly(p,pv,mdl,num_p,pg)
 % d is the distance from point, p to closest point on polygon, ps (d is
 % negative if inside the bounded polygon, pv and positive if outside)
 % iloc is the indice in polygon for closest point from p
-
 np = size(p,1) ;
 % If inpoly m file we need to get the edges to pass to it to avoid the
 % issues of NaNs
@@ -25,8 +24,6 @@ if num_p <= 1 || length(p) < 50
     if ~isempty(mdl) 
         %[~,d] = knnsearch(mdl,p);
         [~,d] = ksearch(mdl,p',1,0,0); 
-        %TODO FIX KSEARCH FOR SERIAL IMPLEMENTATION. WE MUST USE IDX FROM
-        %KSEARCH AND MANUALLY CALCULATE THE DISTANCE 
         d = d'; d = sqrt(d);
     else
         % make distance very large as must be very far from any boundaries
@@ -62,26 +59,25 @@ else
         d = 1d8*ones(length(p),1);
     end
     % Get the inpolygon
-    in = inpoly(p,pv,edges); %InPolygon(p(:,1),p(:,2),pv(:,1),pv(:,2));
-%     in = zeros(length(p),1);
-%     for idx = 1:num_p
-%         ns = int64((idx-1)*np/num_p)+1;
-%         ne = int64(idx*np/num_p);
-%         if exist('inpoly','file') == 2
-%             % m file version
-%             f(idx) = parfeval(Pool,@inpoly,1,p(ns:ne,:),pv,edges);
-%         elseif exist('inpoly','file') == 3 
-%             % mex version
-%             f(idx) = parfeval(Pool,@inpoly,1,p(ns:ne,:)',pv');  %InPolygon,1,...
-%                           %p(ns:ne,1),p(ns:ne,2),pv(:,1),pv(:,2));
-%         end
-%     end
-%     for idx = 1:num_p
-%         [idx_t, in_t] = fetchNext(f); % Get results into a cell array
-%         ns = int64((idx_t-1)*np/num_p)+1;
-%         ne = int64(idx_t*np/num_p);
-%         in(ns:ne,:) = in_t;
-%     end
+    in = zeros(length(p),1);
+    for idx = 1:num_p
+        ns = int64((idx-1)*np/num_p)+1;
+        ne = int64(idx*np/num_p);
+        if exist('inpoly','file') == 2
+            % m file version
+            f(idx) = parfeval(Pool,@inpoly,1,p(ns:ne,:),pv,edges);
+        elseif exist('inpoly','file') == 3 
+            % mex version
+            f(idx) = parfeval(Pool,@inpoly2,1,p(ns:ne,:)',pv');  %InPolygon,1,...
+                          %p(ns:ne,1),p(ns:ne,2),pv(:,1),pv(:,2));
+        end
+    end
+    for idx = 1:num_p
+        [idx_t, in_t] = fetchNext(f); % Get results into a cell array
+        ns = int64((idx_t-1)*np/num_p)+1;
+        ne = int64(idx_t*np/num_p);
+        in(ns:ne,:) = in_t;
+    end
 end
 % d is negative if inside polygon
 d=(-1).^(in).*d;
