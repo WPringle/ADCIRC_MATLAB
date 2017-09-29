@@ -18,8 +18,7 @@
 
 NOTE: You can first run the scripts interactively to build the polygons encompassing the extents of the meshing region and then skip that step so you can submit it to a queue. This is done by setting PLOT_ON=0 and making the contourfile empty. This will force OceanMesh2D to load in the polygon structure .mat file from your last interactive run with those extents. This allows you to loop through multiple datasets automatically and can be very useful.   
 
-7. If you want to mesh the floodplain, it requires an initial coastal mesh with boundaries specified (as nodestrings). The program            extracts the land boundary from the provided mesh so that nodes match with the coastal mesh exactly.
-   NOTE: The floodplain requires you close your contour segements with the land in its center of the bounding box (opposite to what you      would do for the ocean). 
+7. If you want to mesh the floodplain, pass the application feature vectors that represent constraints in the triangulation. Make the bounding box encompass the entire region of interest. You can later merge the grids together using Grid_Merge.m
 
 8. Run the program from driver. Here you set all the input parameters and file names you require.  
 
