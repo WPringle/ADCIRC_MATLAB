@@ -49,6 +49,7 @@ MODULE DATA
         CHARACTER(LEN=50)   :: TimeCurrentTextFile
         CHARACTER(LEN=50)   :: TimeMaxFile
         CHARACTER(LEN=40)   :: VectorFile
+        CHARACTER(LEN=40)   :: VectorFile2
         CHARACTER(LEN=50)   :: VectorFileFormat
         CHARACTER(LEN=50)   :: VectorFileType
         CHARACTER(LEN=50)   :: VectorLabel
@@ -155,6 +156,7 @@ MODULE DATA
         REAL,ALLOCATABLE    :: X(:)
         REAL,ALLOCATABLE    :: Y(:)
         REAL,ALLOCATABLE    :: Z(:)
+        REAL                :: G = 9.81d0
         
         LOGICAL             :: FileExists
 
@@ -377,10 +379,10 @@ PROGRAM FigureGen
 #ifdef NETCDF
                     CALL Check(NF90_OPEN(TRIM(VectorFile),NF90_NOWRITE,NC_ID))
                     CALL Check(NF90_INQUIRE(NC_ID,NC_Var))
-                     CALL Check(NF90_INQ_VARID(NC_ID,'time',NC_Var))
-                     CALL Check(NF90_INQUIRE_VARIABLE(NC_ID,NC_Var,dimids=NC_DimIDs))
-                     CALL Check(NF90_INQUIRE_DIMENSION(NC_ID,NC_DimIDs(1),len=NumRecs))
-                     IF (NumRecs > 1) THEN
+                    CALL Check(NF90_INQ_VARID(NC_ID,'time',NC_Var))
+                    CALL Check(NF90_INQUIRE_VARIABLE(NC_ID,NC_Var,dimids=NC_DimIDs))
+                    CALL Check(NF90_INQUIRE_DIMENSION(NC_ID,NC_DimIDs(1),len=NumRecs))
+                    IF (NumRecs > 1) THEN
                         CALL Check(NF90_GET_VAR(NC_ID,NC_Var,JunkTime,start=(/1/),count=(/2/)))
                         IF(IfGoogle.EQ.1)THEN
                            TimeStep = NINT(JunkTime(2)-JunkTime(1))
@@ -410,7 +412,7 @@ PROGRAM FigureGen
         IF(NumRecords.EQ.0)THEN
 #ifdef NETCDF
             IF (ContourFileType(14:16).eq.'amp'.or.ContourFileType(14:16).eq.'phs') THEN
-               IF((IfPlotFilledContours.GT.0).OR.(IfPlotContourLines.GT.0))THEN
+               IF ((IfPlotFilledContours.GT.0).OR.(IfPlotContourLines.GT.0)) THEN
                    CALL Check(NF90_OPEN(TRIM(ContourFile1),NF90_NOWRITE,NC_ID))
                ELSEIF(IfPlotVectors.GT.0)THEN
                    CALL Check(NF90_OPEN(TRIM(VectorFile),NF90_NOWRITE,NC_ID))
@@ -572,8 +574,11 @@ PROGRAM FigureGen
             ENDIF
 
             CALL SYSTEM(TRIM(Path)//"gmtset PAPER_MEDIA A0")
-            CALL SYSTEM(TRIM(Path)//"gmtset PLOT_DEGREE_FORMAT -D")
-            CALL SYSTEM(TRIM(Path)//"gmtset OUTPUT_DEGREE_FORMAT -D")
+            ! WJP change to positive degree format
+            CALL SYSTEM(TRIM(Path)//"gmtset PLOT_DEGREE_FORMAT +D")
+            CALL SYSTEM(TRIM(Path)//"gmtset OUTPUT_DEGREE_FORMAT +D")
+            !CALL SYSTEM(TRIM(Path)//"gmtset PLOT_DEGREE_FORMAT -D")
+            !CALL SYSTEM(TRIM(Path)//"gmtset OUTPUT_DEGREE_FORMAT -D")
             CALL SYSTEM(TRIM(Path)//"gmtset BASEMAP_TYPE fancy")
             CALL SYSTEM(TRIM(Path)//"gmtset D_FORMAT %lg")
             CALL SYSTEM(TRIM(Path)//"gmtset HISTORY FALSE")
@@ -1199,15 +1204,16 @@ SUBROUTINE CreateCPTFiles
 
             ENDIF
 
-            IF(INDEX(Palette,"INTERVALS").GT.0)THEN
+            IF(INDEX(Palette,"INTERVALS").GT.0.and.K.ne.2) THEN
                 NumGMTColors = (NumDiffContours-1)*TempSplitBy
             ELSE
+                !write(6,*) 'Contour info',ContourMax,ContourMin,ContourInterval
                 NumGMTColors = NINT((ContourMax-ContourMin)/ContourInterval)*TempSplitBy
             ENDIF
 
             ALLOCATE(GMTColors(1:NumGMTColors))
 
-            IF(INDEX(Palette,"INTERVALS").GT.0)THEN
+            IF(INDEX(Palette,"INTERVALS").GT.0.and.K.ne.2) THEN
 
                 DO I=1,NumGMTColors
                     GMTColors(I)%Red1   = 0
@@ -1464,7 +1470,7 @@ SUBROUTINE CreateCPTFiles
 
             ENDDO
 
-            IF(INDEX(Palette,"INTERVALS").GT.0)THEN
+            IF(INDEX(Palette,"INTERVALS").GT.0.and.K.ne.2)THEN
 
                 IF((K.EQ.1).AND.((ContourFileNumCols.EQ.1).OR.     &
                    (TRIM(ContourFileType).EQ."GRID-BATH").OR.      &
@@ -1555,6 +1561,8 @@ SUBROUTINE FindContourMinMax
         INTRINSIC           :: FLOOR
         INTRINSIC           :: INDEX
         INTRINSIC           :: TRIM
+        INTRINSIC           :: MOD
+        INTRINSIC           :: COS
 
         CHARACTER(LEN=1)    :: JunkC
 
@@ -1579,12 +1587,22 @@ SUBROUTINE FindContourMinMax
         REAL,ALLOCATABLE    :: Lon(:)
         REAL                :: Max
         REAL                :: Min
+        REAL                :: Eamp, phsE, phsU, phsV
         REAL,ALLOCATABLE    :: U1(:)
         REAL,ALLOCATABLE    :: U2(:)
         REAL,ALLOCATABLE    :: V1(:)
         REAL,ALLOCATABLE    :: V2(:)
+        REAL,ALLOCATABLE    :: H1(:)
+        REAL,ALLOCATABLE    :: Uamp(:)
+        REAL,ALLOCATABLE    :: Uphs(:)
+        REAL,ALLOCATABLE    :: Vamp(:)
+        REAL,ALLOCATABLE    :: Vphs(:)
         REAL,ALLOCATABLE    :: Vels1(:)
         REAL,ALLOCATABLE    :: Vels2(:)
+        REAL                :: Deg2Rad = 0.01745329252d0
+
+        COMPLEX,ALLOCATABLE    :: VelsZ1(:)
+        COMPLEX,ALLOCATABLE    :: VelsZ2(:)
 
         CounterLocal = 1
         Max = -9999.0
@@ -1662,7 +1680,12 @@ SUBROUTINE FindContourMinMax
                     IF(NC_Status.EQ.NF90_NOERR)THEN
                         NC_Status = NF90_INQ_DIMID(NC_ID1,'num_const',NC_Dim)
                         NC_Status = NF90_INQUIRE_DIMENSION(NC_ID1,NC_Dim,len=NumRecsLocal)
-                        ContourFileNumCols = 1
+                        IF (ContourFileType(17:18).eq.'ef') THEN
+                           ContourFileNumCols = 6
+                           CALL Check(NF90_OPEN(TRIM(VectorFile),NF90_NOWRITE,NC_ID2))
+                        ELSE 
+                           ContourFileNumCols = 1
+                        ENDIF
                         NC_File = 53
                     ENDIF
                     IF(NC_FILE.EQ.-1)THEN
@@ -1671,10 +1694,17 @@ SUBROUTINE FindContourMinMax
                     ENDIF
 #endif
                 ENDIF
-
                 ALLOCATE(U1(1:NumNodesGlobal))
                 ALLOCATE(V1(1:NumNodesGlobal))
                 ALLOCATE(Vels1(1:NumNodesGlobal))
+
+                IF (ContourFileNumCols.eq.6) THEN
+                   ALLOCATE(H1(1:NumNodesGlobal))
+                   ALLOCATE(Uamp(1:NumNodesGlobal))
+                   ALLOCATE(Uphs(1:NumNodesGlobal))
+                   ALLOCATE(Vamp(1:NumNodesGlobal))
+                   ALLOCATE(Vphs(1:NumNodesGlobal))
+                ENDIF
 
                 loopminmax1: DO J=1,NumRecsLocal 
                     
@@ -1737,6 +1767,13 @@ SUBROUTINE FindContourMinMax
                             U1(I) = DefaultValue
                             V1(I) = DefaultValue
                             Vels1(I) = DefaultValue
+                            IF (ContourFileNumCols.eq.6) THEN
+                               H1(I)    = DefaultValue
+                               Uamp(I) = DefaultValue 
+                               Uphs(I) = DefaultValue 
+                               Vamp(I) = DefaultValue 
+                               Vphs(I) = DefaultValue 
+                            ENDIF
                         ENDDO
                         
                         IF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
@@ -1775,6 +1812,23 @@ SUBROUTINE FindContourMinMax
                             ELSEIF(NC_FILE.EQ.53)THEN
                                 CALL Check(NF90_INQ_VARID(NC_ID1,ContourFileType(14:16),NC_Var))
                                 CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,U1,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                IF (ContourFilenumCols.eq.6) THEN
+                                   write(6,*) 'read_phs'
+                                   CALL Check(NF90_INQ_VARID(NC_ID1,'phs',NC_Var))
+                                   CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V1,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                   write(6,*) 'read depth'
+                                   CALL Check(NF90_INQ_VARID(NC_ID1,'depth',NC_Var))
+                                   CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,H1,start=(/1/),count=(/NumNodesGlobal/)))
+                                   write(6,*) 'read u_amp'
+                                   CALL Check(NF90_INQ_VARID(NC_ID2,'u_amp',NC_Var))
+                                   CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Uamp,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                   CALL Check(NF90_INQ_VARID(NC_ID2,'u_phs',NC_Var))
+                                   CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Uphs,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                   CALL Check(NF90_INQ_VARID(NC_ID2,'v_amp',NC_Var))
+                                   CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Vamp,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                   CALL Check(NF90_INQ_VARID(NC_ID2,'v_phs',NC_Var))
+                                   CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Vphs,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                ENDIF
                             ENDIF
 #endif
                         ENDIF
@@ -1813,6 +1867,17 @@ SUBROUTINE FindContourMinMax
 #endif
                                 ENDIF
 
+                            ElSEIF (ContourFileNumCols.EQ.6) THEN
+#ifdef NETCDF
+                                    Eamp = U1(I); phsE = V1(I)*Deg2Rad 
+                                    phsU = Uphs(I)*Deg2Rad; phsV = Vphs(I)*Deg2Rad
+!                                   Energy flux in x-direction
+                                    U1(I) = g*0.5d0*H1(I)*Eamp*Uamp(I)*COS(phsU - phsE)
+!                                   Energy flux in y-direction
+                                    V1(I) = g*0.5d0*H1(I)*Eamp*Vamp(I)*COS(phsV - phsE)
+!                                   Energy flux as a scalar
+                                    Vels1(I) = SQRT(U1(I)*U1(I)+V1(I)*V1(I))
+#endif
                             ENDIF
 
                         ENDDO
@@ -2173,11 +2238,14 @@ SUBROUTINE FindContourMinMax
                         ContourFileNumCols = 1
                         NC_File = 307
                     ENDIF
-                    NC_Status = NF90_INQ_VARID(NC_ID1,ContourFileType(14:16),NC_Var)
+                    NC_Status = NF90_INQ_VARID(NC_ID2,ContourFileType(14:16),NC_Var)
                     IF(NC_Status.EQ.NF90_NOERR)THEN
-                        NC_Status = NF90_INQ_DIMID(NC_ID1,'num_const',NC_Dim)
-                        NC_Status = NF90_INQUIRE_DIMENSION(NC_ID1,NC_Dim,len=NumRecsLocal)
+                        NC_Status = NF90_INQ_DIMID(NC_ID2,'num_const',NC_Dim)
+                        NC_Status = NF90_INQUIRE_DIMENSION(NC_ID2,NC_Dim,len=NumRecsLocal)
                         ContourFileNumCols = 1
+                        IF (ContourFileType(17:19).eq.'phs') THEN
+                           ContourFileNumCols = -2
+                        ENDIF
                         NC_File = 53
                     ENDIF
                     IF(NC_FILE.EQ.-1)THEN
@@ -2203,6 +2271,10 @@ SUBROUTINE FindContourMinMax
                 ALLOCATE(V2(1:NumNodesGlobal))
                 ALLOCATE(Vels1(1:NumNodesGlobal))
                 ALLOCATE(Vels2(1:NumNodesGlobal))
+                !IF (ContourFileNumCols.eq.-2) THEN
+                   ALLOCATE(VelsZ1(1:NumNodesGlobal))
+                   ALLOCATE(VelsZ2(1:NumNodesGlobal))
+                !ENDIF
 
                 loopminmax2: DO J=1,NumRecsLocal 
 
@@ -2308,6 +2380,8 @@ SUBROUTINE FindContourMinMax
                             V2(I) = DefaultValue
                             Vels1(I) = DefaultValue
                             Vels2(I) = DefaultValue
+                            VelsZ1(I) = CMPLX(DefaultValue)
+                            VelsZ2(I) = CMPLX(DefaultValue)
                         ENDDO
 
                         IF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
@@ -2352,6 +2426,10 @@ SUBROUTINE FindContourMinMax
                             ELSEIF(NC_FILE.EQ.53)THEN
                                 CALL Check(NF90_INQ_VARID(NC_ID1,ContourFileType(14:16),NC_Var))
                                 CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,U1,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                IF (ContourFileNumCols.eq.-2) THEN
+                                   CALL Check(NF90_INQ_VARID(NC_ID1,ContourFileType(17:19),NC_Var))
+                                   CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V1,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                ENDIF
                             ENDIF
 #endif
                         ENDIF
@@ -2389,7 +2467,14 @@ SUBROUTINE FindContourMinMax
                                     Vels1(I) = SQRT(U1(I)*U1(I)+V1(I)*V1(I))
 #endif
                                 ENDIF
-
+                            ELSEIF(ContourFileNumCols.EQ.-2)THEN
+                                IF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
+#ifdef NETCDF
+                                    U1(I) = U1(I) * ContourConversionFactor
+                                    V1(I) = V1(I) * ContourConversionFactor
+                                    VelsZ1(I) = U1(I)*EXP(CMPLX(0,1)*V1(I)*Deg2Rad)
+#endif
+                                ENDIF
                             ENDIF
 
                         ENDDO
@@ -2436,6 +2521,10 @@ SUBROUTINE FindContourMinMax
                             ELSEIF(NC_FILE.EQ.53)THEN
                                 CALL Check(NF90_INQ_VARID(NC_ID2,ContourFileType(14:16),NC_Var))
                                 CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,U2,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                IF (ContourFileType(17:19).eq.'amp'.or.ContourFileType(17:19).eq.'phs') THEN
+                                   CALL Check(NF90_INQ_VARID(NC_ID2,ContourFileType(17:19),NC_Var))
+                                   CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,V2,start=(/J,1/),count=(/1,NumNodesGlobal/)))
+                                ENDIF
                             ENDIF
 #endif
                         ENDIF
@@ -2474,24 +2563,44 @@ SUBROUTINE FindContourMinMax
 #endif
                                 ENDIF
 
+                            ELSEIF(ContourFileNumCols.EQ.-2)THEN
+                                IF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
+#ifdef NETCDF
+                                    U2(I) = U2(I) * ContourConversionFactor
+                                    V2(I) = V2(I) * ContourConversionFactor
+                                    VelsZ2(I) = U2(I)*EXP(CMPLX(0,1)*V2(I)*Deg2Rad)
+#endif
+                                ENDIF
                             ENDIF
 
                         ENDDO
 
                         DO I=1,NumNodesLocal
+                            IF (ContourFileNumCols.eq.-2) THEN
+                                IF ((REAL(VelsZ1(XYZNodes(I))).GT.-99998.0).AND. &
+                                    (REAL(VelsZ2(XYZNodes(I))).GT.-99998.0))THEN
 
-                            IF((Vels1(XYZNodes(I)).GT.-99998.0).AND. &
-                               (Vels2(XYZNodes(I)).GT.-99998.0))THEN
+                                   IF(ABS(VelsZ1(XYZNodes(I))-VelsZ2(XYZNodes(I))).LT.Min)THEN
+                                      Min = 0.5d0*SQRT(2d0)*ABS(VelsZ1(XYZNodes(I))-VelsZ2(XYZNodes(I)))
+                                   ENDIF
+                                   IF(ABS(VelsZ1(XYZNodes(I))-VelsZ2(XYZNodes(I))).GT.Max)THEN
+                                      Max = 0.5d0*SQRT(2d0)*ABS(VelsZ1(XYZNodes(I))-VelsZ2(XYZNodes(I)))
+                                   ENDIF
 
-                                IF((Vels1(XYZNodes(I))-Vels2(XYZNodes(I))).LT.Min)THEN
-                                    Min = Vels1(XYZNodes(I))-Vels2(XYZNodes(I))
                                 ENDIF
-                                IF((Vels1(XYZNodes(I))-Vels2(XYZNodes(I))).GT.Max)THEN
-                                    Max = Vels1(XYZNodes(I))-Vels2(XYZNodes(I))
-                                ENDIF
+                            ELSE
+                                IF ((Vels1(XYZNodes(I)).GT.-99998.0).AND. &
+                                   (Vels2(XYZNodes(I)).GT.-99998.0))THEN
 
+                                   IF((Vels1(XYZNodes(I))-Vels2(XYZNodes(I))).LT.Min)THEN
+                                      Min = Vels1(XYZNodes(I))-Vels2(XYZNodes(I))
+                                   ENDIF
+                                   IF((Vels1(XYZNodes(I))-Vels2(XYZNodes(I))).GT.Max)THEN
+                                      Max = Vels1(XYZNodes(I))-Vels2(XYZNodes(I))
+                                   ENDIF
+
+                                ENDIF
                             ENDIF
-
                         ENDDO
 
                     ENDIF
@@ -2510,6 +2619,8 @@ SUBROUTINE FindContourMinMax
                 IF(ALLOCATED(V2)) DEALLOCATE(V2)
                 IF(ALLOCATED(Vels1)) DEALLOCATE(Vels1)
                 IF(ALLOCATED(Vels2)) DEALLOCATE(Vels2)
+                IF(ALLOCATED(VelsZ1)) DEALLOCATE(VelsZ1)
+                IF(ALLOCATED(VelsZ2)) DEALLOCATE(VelsZ2)
 
                 IF(TRIM(ContourFileFormat1).EQ."ASCII")THEN
                     CLOSE(UNIT=19,STATUS="KEEP")
@@ -4756,6 +4867,10 @@ SUBROUTINE ReadInputFile
             ENDIF
         ELSE
             FindContourRange = 0
+            TempC2 = TempC(1:INDEX(TempC,",")-1)
+            READ(UNIT=TempC2,FMT=*) ContourMin
+            TempC2 = TempC(INDEX(TempC,",")+1:LEN_TRIM(TempC))
+            READ(UNIT=TempC2,FMT=*) ContourMax
             IF(MyRank.EQ.0)THEN
                 WRITE(UNIT=*,FMT='(A,A,A)') "WARNING: Contour range superseded by contours specified in ", &
                                             TRIM(DiffContoursFile),"."
@@ -4844,7 +4959,17 @@ SUBROUTINE ReadInputFile
         READ(UNIT=11,FMT='(A1)')  JunkC ! PARAMETERS FOR VECTORS
 
         READ(UNIT=11,FMT=*)       IfPlotVectors
-        READ(UNIT=11,FMT='(A40)') VectorFile
+        IF (IfPlotFilledContours.EQ.2.AND.ContourFileType(17:19).eq.'ef') THEN
+           WRITE(*,'(A)') 'READING TWO VECTORFILES'
+           READ(UNIT=11,FMT='(A50)') TempC
+           TempC2 = TempC(1:INDEX(TempC,",")-1)
+           READ(UNIT=TempC2,FMT=*) VectorFile
+           TempC2 = TempC(INDEX(TempC,",")+1:LEN_TRIM(TempC))
+           READ(UNIT=TempC2,FMT=*) VectorFile2
+           WRITE(*,*) '1:',TRIM(VectorFile),'2:',TRIM(VectorFile2)
+        ELSE
+           READ(UNIT=11,FMT='(A40)') VectorFile
+        ENDIF
         IF(IfPlotVectors.EQ.1)THEN
             INQUIRE(FILE=TRIM(VectorFile),EXIST=FileExists)
             IF(.NOT.FileExists)THEN
@@ -5852,6 +5977,7 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
         CHARACTER(LEN=15) :: ContourLabelMinDistC
         CHARACTER(LEN=8)  :: ContourLabelSizeC
         CHARACTER(LEN=15) :: ContourScaleYC
+        CHARACTER(LEN=15) :: ContourIntervalC
         CHARACTER(LEN=100):: EdgeFileName
         CHARACTER(LEN=100):: GeoRefFileEPS
         CHARACTER(LEN=100):: GeoRefFilePNG
@@ -5917,7 +6043,7 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
 
         LOGICAL           :: AddBackgroundImage
         LOGICAL           :: WroteBorder
-        LOGICAL           :: ExistF
+        LOGICAL           :: ExistF1,ExistF2
 
         REAL              :: CentralMeridian
         REAL              :: ContourScaleY
@@ -6012,6 +6138,10 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
                         //" -Di "//TRIM(ProjectionC)//" -R"//TRIM(ADJUSTL(XMin))//"/" &
                         //TRIM(ADJUSTL(XMax))//"/"//TRIM(ADJUSTL(YMin))//"/"          &
                         //TRIM(ADJUSTL(YMax))//" > "//TRIM(TempMapFile2))                        
+            write(6,*)  TRIM(Path)//"mapproject "//TRIM(TempMapFile1)                 &
+                        //" -Di "//TRIM(ProjectionC)//" -R"//TRIM(ADJUSTL(XMin))//"/" &
+                        //TRIM(ADJUSTL(XMax))//"/"//TRIM(ADJUSTL(YMin))//"/"          &
+                        //TRIM(ADJUSTL(YMax))//" > "//TRIM(TempMapFile2)                        
         ELSEIF(IfGoogle.EQ.1)THEN
             CALL SYSTEM(TRIM(Path)//"mapproject "//TRIM(TempMapFile1)               &
                         //" -Di "//TRIM(ProjectionC)                                &
@@ -6059,6 +6189,7 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
         WRITE(UNIT=BorderIncrementMinorC,FMT=1236) BorderIncrementMinor
         WRITE(UNIT=ContourLabelEveryC   ,FMT=1236) ContourLabelEvery
         WRITE(UNIT=ContourLabelMinDistC ,FMT=1236) ContourLabelMinDist
+        WRITE(UNIT=ContourIntervalC ,FMT=1236) ContourInterval
 
         WRITE(UNIT=ContourLabelSizeC,FMT='(I4.4)') ContourLabelSize
 
@@ -6296,31 +6427,6 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
                 write(*,*) 'pscontour Line',TRIM(LINE)
                 CALL SYSTEM(TRIM(Line))
            
-                ! William 9.9.2016
-                ! Add lines to plot filled circles when ContourXYZFile.psxyz
-                ! exists
-                IF (IfPlotFilledContours.eq.1) THEN
-                INQUIRE(File=TRIM(ContourFile1)//'.psxy',EXIST=ExistF)
-                   IF (ExistF) THEN
-                        Line = ""
-                        Line = TRIM(LINE)//TRIM(PATH)//'psxy'
-                        Line = TRIM(LINE)//' '//TRIM(ContourFile1)//'.psxy'
-                        Line = TRIM(LINE)//' '//'-C'//TRIM(TempPath)//'ContourPalette.cpt'
-                        Line = TRIM(LINE)//' '//TRIM(ProjectionC)
-                        Line = TRIM(Line)//" "//"-R"//TRIM(ADJUSTL(XMin))//"/"//TRIM(ADJUSTL(XMax))//'/' &
-                                                   //TRIM(ADJUSTL(YMin))//"/"//TRIM(ADJUSTL(YMax))
-                        Line = TRIM(LINE)//' '//'-W1p,Black'
-                        Line = TRIM(LINE)//' '//'-Sc'
-                        IF(KeepOpen(1).EQ.1)THEN
-                                Line = TRIM(Line)//" "//"-K"
-                        ENDIF
-                        Line = TRIM(Line)//" "//"-O >>"
-                        Line = TRIM(LINE)//' '//TRIM(PlotName)//'.ps'
-                        write(*,*) 'psxyz Line',TRIM(LINE)
-                        CALL SYSTEM(TRIM(Line)) 
-                   ENDIF  
-                ENDIF
- 
             ELSEIF(OptimizeContours.EQ.1)THEN
 
                 Line = ""
@@ -6372,7 +6478,7 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
             ENDIF
 
         ENDIF
-
+        
         IF(IfPlotGrid.EQ.1)THEN
 
             DO IN=1,NumEdgeFiles
@@ -6431,14 +6537,18 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
             ENDIF
 
         ENDIF
-
+        
         IF(IfPlotContourLines.GE.1)THEN
 
             IF(OptimizeContours.EQ.0)THEN
 
                 Line = ""
                 Line = TRIM(Line)//TRIM(Path)//"pscontour"
-                Line = TRIM(Line)//" "//TRIM(TempPath)//TRIM(ContourXYZFile)
+                IF (ContourFileType(17:19).eq.'amp'.or.ContourFileType(17:19).eq.'phs') THEN
+                    Line = TRIM(Line)//" "//TRIM(TempPath)//TRIM(ContourXYZFile)//'2'
+                ELSE   
+                    Line = TRIM(Line)//" "//TRIM(TempPath)//TRIM(ContourXYZFile)
+                ENDIF        
                 Line = TRIM(Line)//" "//TRIM(ProjectionC)
                 Line = TRIM(Line)//" "//"-R"//TRIM(ADJUSTL(XMin))//"/"//TRIM(ADJUSTL(XMax))//"/" &
                                             //TRIM(ADJUSTL(YMin))//"/"//TRIM(ADJUSTL(YMax))
@@ -6449,7 +6559,11 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
                                        "/s"//TRIM(ADJUSTL(BorderIncrementMajorC))//       &
                                        "f"//TRIM(ADJUSTL(BorderIncrementMinorC))//"WeSn"
                 ENDIF
+!                IF (ContourFileType(17:19).eq.'amp'.or.ContourFileType(17:19).eq.'phs') THEN
+!                    Line = TRIM(Line)//" "//"-C"//TRIM(ADJUSTL(ContourIntervalC))
+!                ELSE
                 Line = TRIM(Line)//" "//"-C"//TRIM(TempPath)//"LabelPalette.cpt"
+!                ENDIF
                 IF(ContourLabelEvery.LT.0.0000001)THEN
                     Line = TRIM(Line)//" "//"-A-"
                 ELSE
@@ -6473,6 +6587,7 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
                     Line = TRIM(Line)//" "//"-O >>"
                 ENDIF
                 Line = TRIM(Line)//" "//TRIM(PlotName)//".ps"
+                write(6,*) 'Contour Line=',Line
                 CALL SYSTEM(TRIM(Line))
 
             ELSEIF(OptimizeContours.EQ.1)THEN
@@ -6527,9 +6642,94 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
             ENDIF
 
         ENDIF
-        
+
+        IF(IfPlotCoastline.GT.0)THEN
+
+            Line = ""
+            Line = TRIM(Line)//TRIM(Path)//"pscoast"
+            Line = TRIM(Line)//" "//TRIM(ProjectionC)
+            IF(.NOT.WroteBorder.AND.(IfGoogle.EQ.0).AND.(IfGIS.EQ.0))THEN
+                WroteBorder = .TRUE.
+                Line = TRIM(Line)//" "//"-Bp"//TRIM(ADJUSTL(BorderIncrementMajorC))// &
+                                   "f"//TRIM(ADJUSTL(BorderIncrementMinorC))//        &
+                                   "/s"//TRIM(ADJUSTL(BorderIncrementMajorC))//       &
+                                   "f"//TRIM(ADJUSTL(BorderIncrementMinorC))//"WeSn"
+            ENDIF
+            Line = TRIM(Line)//" "//"-R"//TRIM(ADJUSTL(XMin))//"/"//TRIM(ADJUSTL(XMax))//"/" &
+                                        //TRIM(ADJUSTL(YMin))//"/"//TRIM(ADJUSTL(YMax))
+            Line = TRIM(Line)//" "//"-W"//TRIM(CoastlineThickness)//"p/"//TRIM(CoastlineColor)
+            Line = TRIM(Line)//" "//"-D"//CoastlineRes//"+"
+            Line = TRIM(Line)//" "//"-A0/0/"//CoastlineWB
+            IF(KeepOpen(6).EQ.1) THEN
+                Line = TRIM(Line)//" "//"-K"
+            ENDIF
+            IF(IfStarted.EQ.0)THEN
+                Line = TRIM(Line)//" "//">"
+                IfStarted = 1
+            ELSE
+                Line = TRIM(Line)//" "//"-O >>"
+            ENDIF
+            Line = TRIM(Line)//" "//TRIM(PlotName)//".ps"
+            CALL SYSTEM(TRIM(Line))
+
+            IF(Verbose.GE.3)THEN
+                IF((IfGoogle.EQ.0).AND.(IfGIS.EQ.0))THEN
+                    WRITE(*,9720) "Core ",MyRank," wrote the coastline for record ",Record,"."
+                ELSE
+                    WRITE(*,9721) "Core ",MyRank," wrote the coastline for record ",Record, &
+                                  ", layer ",IL1,", cell ",IL2,"/",IL3,"."
+                ENDIF
+            ENDIF
+
+        ENDIF
+                
+        ! William
+        ! Add lines to plot filled circles when ContourXYZFile.psxy exists
+                IF (IfPlotFilledContours.eq.1.or.IfPlotContourLines.eq.1) THEN
+                INQUIRE(File=TRIM(ContourFile1)//'.psxy',EXIST=ExistF1)
+                   IF (ExistF1) THEN
+                        Line = ""
+                        Line = TRIM(LINE)//TRIM(PATH)//'psxy'
+                        Line = TRIM(LINE)//' '//TRIM(ContourFile1)//'.psxy'
+                        Line = TRIM(LINE)//' '//'-C'//TRIM(TempPath)//'ContourPalette.cpt'
+                        Line = TRIM(LINE)//' '//TRIM(ProjectionC)
+                        Line = TRIM(Line)//" "//"-R"//TRIM(ADJUSTL(XMin))//"/"//TRIM(ADJUSTL(XMax))//'/' &
+                                                   //TRIM(ADJUSTL(YMin))//"/"//TRIM(ADJUSTL(YMax))
+                        Line = TRIM(LINE)//' '//'-W1p,Black'
+                        Line = TRIM(LINE)//' '//'-Sc'
+                        IF(KeepOpen(1).EQ.1)THEN
+                           Line = TRIM(Line)//" "//"-K"
+                        ENDIF
+                        Line = TRIM(Line)//" "//"-O >>"
+                        Line = TRIM(LINE)//' '//TRIM(PlotName)//'.ps'
+                        write(*,*) 'psxyz Line',TRIM(LINE)
+                        CALL SYSTEM(TRIM(Line)) 
+                   ENDIF  
+                INQUIRE(File=TRIM(ContourFile1)//'.sponge',EXIST=ExistF2)
+                   IF (ExistF2) THEN
+                        Line = ""
+                        Line = TRIM(LINE)//TRIM(PATH)//'psxy'
+                        Line = TRIM(LINE)//' '//TRIM(ContourFile1)//'.sponge'
+                        Line = TRIM(LINE)//' '//TRIM(ProjectionC)
+                        Line = TRIM(Line)//" "//"-R"//TRIM(ADJUSTL(XMin))//"/"//TRIM(ADJUSTL(XMax))//'/' &
+                                                   //TRIM(ADJUSTL(YMin))//"/"//TRIM(ADJUSTL(YMax))
+                        Line = TRIM(LINE)//' '//'-S+0.1c'
+                        !Line = TRIM(LINE)//' '//'-L'
+                        !Line = TRIM(LINE)//' '//'-W1p,Black,-'
+                        
+                        !Line = TRIM(LINE)//' '//'-Gp1/38'
+                        IF(KeepOpen(1).EQ.1)THEN
+                           Line = TRIM(Line)//" "//"-K"
+                        ENDIF
+                        Line = TRIM(Line)//" "//"-O >>"
+                        Line = TRIM(LINE)//' '//TRIM(PlotName)//'.ps'
+                        write(*,*) 'sponge Line',TRIM(LINE)
+                        CALL SYSTEM(TRIM(Line)) 
+                   ENDIF  
+                ENDIF
+
         IF(((IfPlotFilledContours.GE.1).OR.((IfPlotContourLines.GE.1).AND.(INDEX(ColorLines,"CONTOUR").GT.0)).OR. &
-           ((IfPlotGrid.GT.0).AND.(INDEX(ColorLines,"GRID").GT.0)).OR. &
+           ((IfPlotGrid.GT.0).AND.(INDEX(ColorLines,"GRID").GT.0)).OR.(ExistF1).OR.&
            (TRIM(ContourFileType).EQ."HWM-CSV")).AND.(INDEX(ColorLines,"GRID-DECOMP").LE.0).AND.(IL1.EQ.1))THEN
 
             Line = ""
@@ -6619,46 +6819,6 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
                     WRITE(*,9720) "Core ",MyRank," wrote the levee/road boundaries for record ",Record,"."
                 ELSE
                     WRITE(*,9721) "Core ",MyRank," wrote the levee/road boundaries for record ",Record, &
-                                  ", layer ",IL1,", cell ",IL2,"/",IL3,"."
-                ENDIF
-            ENDIF
-
-        ENDIF
-
-        IF(IfPlotCoastline.GT.0)THEN
-
-            Line = ""
-            Line = TRIM(Line)//TRIM(Path)//"pscoast"
-            Line = TRIM(Line)//" "//TRIM(ProjectionC)
-            IF(.NOT.WroteBorder.AND.(IfGoogle.EQ.0).AND.(IfGIS.EQ.0))THEN
-                WroteBorder = .TRUE.
-                Line = TRIM(Line)//" "//"-Bp"//TRIM(ADJUSTL(BorderIncrementMajorC))// &
-                                   "f"//TRIM(ADJUSTL(BorderIncrementMinorC))//        &
-                                   "/s"//TRIM(ADJUSTL(BorderIncrementMajorC))//       &
-                                   "f"//TRIM(ADJUSTL(BorderIncrementMinorC))//"WeSn"
-            ENDIF
-            Line = TRIM(Line)//" "//"-R"//TRIM(ADJUSTL(XMin))//"/"//TRIM(ADJUSTL(XMax))//"/" &
-                                        //TRIM(ADJUSTL(YMin))//"/"//TRIM(ADJUSTL(YMax))
-            Line = TRIM(Line)//" "//"-W"//TRIM(CoastlineThickness)//"p/"//TRIM(CoastlineColor)
-            Line = TRIM(Line)//" "//"-D"//CoastlineRes//"+"
-            Line = TRIM(Line)//" "//"-A0/0/"//CoastlineWB
-            IF(KeepOpen(6).EQ.1) THEN
-                Line = TRIM(Line)//" "//"-K"
-            ENDIF
-            IF(IfStarted.EQ.0)THEN
-                Line = TRIM(Line)//" "//">"
-                IfStarted = 1
-            ELSE
-                Line = TRIM(Line)//" "//"-O >>"
-            ENDIF
-            Line = TRIM(Line)//" "//TRIM(PlotName)//".ps"
-            CALL SYSTEM(TRIM(Line))
-
-            IF(Verbose.GE.3)THEN
-                IF((IfGoogle.EQ.0).AND.(IfGIS.EQ.0))THEN
-                    WRITE(*,9720) "Core ",MyRank," wrote the coastline for record ",Record,"."
-                ELSE
-                    WRITE(*,9721) "Core ",MyRank," wrote the coastline for record ",Record, &
                                   ", layer ",IL1,", cell ",IL2,"/",IL3,"."
                 ENDIF
             ENDIF
@@ -6781,7 +6941,9 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
                                        "f"//TRIM(ADJUSTL(BorderIncrementMinorC))//"WeSn"
                 ENDIF
                 Line = TRIM(Line)//" "//"-GBlack"
-                Line = TRIM(Line)//" "//"-Sc12p"
+                ! WJP: make smaller
+                Line = TRIM(Line)//" "//"-Sc6p"
+!                Line = TRIM(Line)//" "//"-Sc12p"
                 Line = TRIM(Line)//" "//"-K"
                 Line = TRIM(Line)//" "//"-O >>"
                 Line = TRIM(Line)//" "//TRIM(PlotName)//".ps"
@@ -6794,7 +6956,9 @@ SUBROUTINE WritePSImage(Record,IL1,IL2,IL3)
                 Line = TRIM(Line)//" "//TRIM(ProjectionC)
                 Line = TRIM(Line)//" "//"-R"//TRIM(ADJUSTL(XMin))//"/"//TRIM(ADJUSTL(XMax))//"/" &
                                             //TRIM(ADJUSTL(YMin))//"/"//TRIM(ADJUSTL(YMax))
-                Line = TRIM(Line)//" "//"-Sc10p"
+                ! WJP: make smaller
+                Line = TRIM(Line)//" "//"-Sc5p"
+!                Line = TRIM(Line)//" "//"-Sc10p"
                 IF((KeepOpen(9).EQ.1).OR.(J.LT.I))THEN
                     Line = TRIM(Line)//" "//"-K"
                 ENDIF
@@ -7486,10 +7650,10 @@ SUBROUTINE WriteXYZFiles(Record)
 #ifdef NETCDF
         INTEGER,DIMENSION(NF90_MAX_VAR_DIMS) :: NC_DimIDs
         INTEGER             :: NC_File
-        INTEGER             :: NC_ID1
-        INTEGER             :: NC_ID2
+        INTEGER             :: NC_ID1, NC_ID3
+        INTEGER             :: NC_ID2, NC_ID4
         INTEGER             :: NC_Status
-        INTEGER             :: NC_Var
+        INTEGER             :: NC_Var, NC_Var1
         INTEGER             :: NC_Dim
 #endif
         INTEGER             :: NumAttributes1
@@ -7519,7 +7683,8 @@ SUBROUTINE WriteXYZFiles(Record)
         REAL                :: Dist
         REAL                :: JunkR
         REAL                :: JunkR1
-        REAL                :: JunkR2
+        REAL                :: JunkR2, JunkR3
+        REAL                :: Eamp, phsU, phsV, phsE 
         REAL,ALLOCATABLE    :: Lat(:)
         REAL,ALLOCATABLE    :: Lon(:)
 #ifdef NETCDF
@@ -7533,8 +7698,18 @@ SUBROUTINE WriteXYZFiles(Record)
         REAL,ALLOCATABLE    :: U2(:)
         REAL,ALLOCATABLE    :: V1(:)
         REAL,ALLOCATABLE    :: V2(:)
+        REAL,ALLOCATABLE    :: H1(:)
+        REAL,ALLOCATABLE    :: Uamp(:)
+        REAL,ALLOCATABLE    :: Uphs(:)
+        REAL,ALLOCATABLE    :: Vamp(:)
+        REAL,ALLOCATABLE    :: Vphs(:)
         REAL,ALLOCATABLE    :: Vels1(:)
         REAL,ALLOCATABLE    :: Vels2(:)
+
+        REAL                :: Deg2Rad = 0.01745329252d0
+        COMPLEX,ALLOCATABLE :: VelsZ1(:)
+        COMPLEX,ALLOCATABLE :: VelsZ2(:)
+
 
  1236   FORMAT(F15.8)
 
@@ -7548,7 +7723,9 @@ SUBROUTINE WriteXYZFiles(Record)
                     !William 7/13/2016, added for support for not in path filenames
                     ContourXYZFile = Trim_Path(ContourXYZFile)
                     OPEN(UNIT=12,FILE=TRIM(TempPath)//TRIM(ContourXYZFile),ACTION="WRITE")
-
+                    IF (ContourFileType(17:19).eq.'amp'.or.ContourFileType(17:19).eq.'phs') THEN
+                        OPEN(UNIT=52,FILE=TRIM(TempPath)//TRIM(ContourXYZFile)//'2',ACTION="WRITE")
+                    ENDIF
                     IF(TRIM(ContourFileFormat1).EQ."ASCII")THEN
                         UnitFile1Opened = .FALSE.
                         INQUIRE(UNIT=19,OPENED=UnitFile1Opened)
@@ -7633,7 +7810,13 @@ SUBROUTINE WriteXYZFiles(Record)
                             CALL Check(NF90_INQ_VARID(NC_ID1,'const',NC_Var))
                             CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,Const))
                             write(6,*) Const
-                            ContourFileNumCols = 1
+                            IF (ContourFileType(17:18).eq.'ef') THEN
+                               write(6,*) 'Calc energy flux',TRIM(VectorFile)
+                               ContourFileNumCols = 6
+                               CALL Check(NF90_OPEN(TRIM(VectorFile),NF90_NOWRITE,NC_ID2))
+                            ELSE 
+                               ContourFileNumCols = 1
+                            ENDIF
                             NC_File = 53
                         ENDIF
 #endif
@@ -7694,6 +7877,14 @@ SUBROUTINE WriteXYZFiles(Record)
                     IF(.NOT.ALLOCATED(V1))    ALLOCATE(V1(1:NumNodesGlobal))
                     IF(.NOT.ALLOCATED(Vels1)) ALLOCATE(Vels1(1:NumNodesGlobal))
 
+                    IF (ContourFileNumCols.eq.6.AND..NOT.ALLOCATED(H1)) THEN
+                       ALLOCATE(H1(1:NumNodesGlobal))
+                       ALLOCATE(Uamp(1:NumNodesGlobal))
+                       ALLOCATE(Uphs(1:NumNodesGlobal))
+                       ALLOCATE(Vamp(1:NumNodesGlobal))
+                       ALLOCATE(Vphs(1:NumNodesGlobal))
+                    ENDIF
+
                     IF(INDEX(TRIM(ContourFile1),"64").GT.0)THEN
                         DO I=1,NumNodesGlobal
                             U1(I)    = -99999.0
@@ -7705,12 +7896,26 @@ SUBROUTINE WriteXYZFiles(Record)
                             U1(I)    = DefaultValue * ContourConversionFactor
                             V1(I)    = DefaultValue * ContourConversionFactor
                             Vels1(I) = DefaultValue * ContourConversionFactor
+                            IF (ContourFileNumCols.eq.6) THEN
+                               H1(I) = DefaultValue * ContourConversionFactor
+                               Uamp(I) = DefaultValue * ContourConversionFactor
+                               Uphs(I) = DefaultValue * ContourConversionFactor
+                               Vamp(I) = DefaultValue * ContourConversionFactor
+                               Vphs(I) = DefaultValue * ContourConversionFactor
+                            ENDIF
                         ENDDO
                     ELSE
                         DO I=1,NumNodesGlobal
                             U1(I)    = DefaultValue
                             V1(I)    = DefaultValue
                             Vels1(I) = DefaultValue
+                            IF (ContourFileNumCols.eq.6) THEN
+                               H1(I) = DefaultValue
+                               Uamp(I) = DefaultValue 
+                               Uphs(I) = DefaultValue 
+                               Vamp(I) = DefaultValue 
+                               Vphs(I) = DefaultValue 
+                            ENDIF
                         ENDDO
                     ENDIF
 
@@ -7756,6 +7961,29 @@ SUBROUTINE WriteXYZFiles(Record)
                         ELSEIF(NC_File.EQ.53)THEN
                             CALL Check(NF90_INQ_VARID(NC_ID1,ContourFileType(14:16),NC_Var))
                             CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,U1,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            IF (ContourFileType(17:19).eq.'amp'.or.ContourFileType(17:19).eq.'phs') THEN
+                               CALL Check(NF90_INQ_VARID(NC_ID1,ContourFileType(17:19),NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V1,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            ELSEIF (ContourFileType(17:18).eq.'ef') THEN
+                               write(6,*) 'read_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID1,'phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V1,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read depth'
+                               CALL Check(NF90_INQ_VARID(NC_ID1,'depth',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,H1,start=(/1/),count=(/NumNodesGlobal/)))
+                               write(6,*) 'read u_amp'
+                               CALL Check(NF90_INQ_VARID(NC_ID2,'u_amp',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Uamp,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read u_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID2,'u_phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Uphs,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read v_amp'
+                               CALL Check(NF90_INQ_VARID(NC_ID2,'v_amp',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Vamp,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read v_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID2,'v_phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Vphs,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            ENDIF
                         ENDIF
 #endif
                     ENDIF
@@ -7800,6 +8028,32 @@ SUBROUTINE WriteXYZFiles(Record)
                                 Vels1(I) = ContourConversionFactor * SQRT(U1(I)*U1(I)+V1(I)*V1(I))
 #endif
                             ENDIF
+                        
+                        ELSEIF (ContourFileNumCols.EQ.6) THEN
+#ifdef NETCDF
+                               IF(U1(I).ne.DefaultValue.and.Uamp(I).ne.DefaultValue.and.Vamp(I).ne.DefaultValue) THEN
+                                 Eamp = U1(I); phsE = V1(I)*Deg2Rad 
+                                 phsU = Uphs(I)*Deg2Rad; phsV = Vphs(I)*Deg2Rad
+!                                IF (MOD(I,1000000).eq.0) THEN
+!                                   write(6,*) 'Amp phase inputs',I
+!                                   write(6,*) Eamp,phsE,G,H1(I)
+!                                   write(6,*) Uamp(I),phsU,Vamp(I),phsV
+!                                ENDIF
+!                                Energy flux in x-direction
+                                 U1(I) = g*0.5d0*H1(I)*Eamp*Uamp(I)*COS(phsU - phsE)
+!                                Energy flux in y-direction
+                                 V1(I) = g*0.5d0*H1(I)*Eamp*Vamp(I)*COS(phsV - phsE)
+!                                Energy flux as a scalar
+                                 Vels1(I) = SQRT(U1(I)*U1(I)+V1(I)*V1(I))
+                                 IF (Vels1(I)>1d6) THEN
+                                   write(6,*) 'Flux values',I
+                                   write(6,*) U1(I),V1(I),Vels1(I)
+                                   write(6,*) 'Amp phase inputs',I
+                                   write(6,*) Eamp,phsE,G,H1(I)
+                                   write(6,*) Uamp(I),phsU,Vamp(I),phsV
+                                 ENDIF
+                               ENDIF
+#endif
 
                         ENDIF
 
@@ -7815,10 +8069,18 @@ SUBROUTINE WriteXYZFiles(Record)
                            ENDIF
                         ENDIF
                         WRITE(UNIT=12,FMT='(3(2X,F16.8))') X(I), Y(I), Z(I)     
-
+                        
+                        IF (ContourFileType(17:19).eq.'amp'.or.ContourFileType(17:19).eq.'phs') THEN
+                           IF(V1(XYZNodes(I)).GT.-99998.0)THEN
+                              V1(XYZNodes(I)) = V1(XYZNodes(I)) * ContourConversionFactor
+                           ENDIF
+                           WRITE(UNIT=52,FMT='(3(2X,F16.8))') X(I), Y(I), V1(XYZNodes(I))     
+                        ENDIF
                     ENDDO
-
                     CLOSE(UNIT=12,STATUS="KEEP")
+                    IF (ContourFileType(17:19).eq.'amp'.or.ContourFileType(17:19).eq.'phs') THEN
+                       CLOSE(UNIT=52,STATUS="KEEP")
+                    ENDIF
                     IF(TRIM(ContourFileFormat1).EQ."ASCII")THEN
                         CONTINUE
                     ELSEIF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
@@ -8187,8 +8449,9 @@ SUBROUTINE WriteXYZFiles(Record)
                                 IF (Column_No.eq.1) THEN
                                     READ(UNIT=19,FMT=*) JunkI, JunkR
                                 ELSE
-                                    READ(UNIT=19,FMT=*) JunkI, JunkR1, JunkR2
-                                    JunkR = sqrt(JunkR1**2 + JunkR2**2)
+                                    READ(UNIT=19,FMT=*) JunkI, JunkR1, JunkR2, JunkR3
+                                    JunkR = max(abs(JunkR1) + abs(JunkR3),&
+                                                abs(JunkR2) + abs(JunkR3))
                                 ENDIF
                                 Attributes1(JunkI) = JunkR
 
@@ -8262,8 +8525,12 @@ SUBROUTINE WriteXYZFiles(Record)
                         CALL Check(NF90_INQ_VARID(NC_ID1,'time',NC_Var))
                         CALL Check(NF90_INQUIRE_VARIABLE(NC_ID1,NC_Var,dimids=NC_DimIDs))
                         CALL Check(NF90_INQUIRE_DIMENSION(NC_ID1,NC_DimIDs(1),len=NumRecs))
-                        CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,NC_Time,start=(/Record/),count=(/1/)))
-                        CurrentTime = NC_Time(1)
+                        IF (NumRecs > 0) THEN
+                            CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,NC_Time,start=(/min(NumRecs,Record)/),count=(/1/)))
+                            CurrentTime = NC_Time(1)
+                        ELSE
+                            CurrentTime = 0d0
+                        ENDIF
                         NC_Status = NF90_INQ_VARID(NC_ID1,'zeta',NC_Var)
                         IF(NC_Status.EQ.NF90_NOERR)THEN
                             ContourFileNumCols = 1
@@ -8323,6 +8590,17 @@ SUBROUTINE WriteXYZFiles(Record)
                         IF(NC_Status.EQ.NF90_NOERR)THEN
                             NC_Status = NF90_INQ_DIMID(NC_ID1,'num_const',NC_Dim)
                             NC_Status = NF90_INQUIRE_DIMENSION(NC_ID1,NC_Dim,len=NumRecs)
+                            IF(.NOT.ALLOCATED(Const)) ALLOCATE(Const(NumRecs))
+                            CALL Check(NF90_INQ_VARID(NC_ID1,'const',NC_Var))
+                            CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,Const))
+                            write(6,*) Const
+                            IF (ContourFileType(17:18).eq.'ef') THEN
+                               write(6,*) 'Calc energy flux',TRIM(VectorFile)
+                               ContourFileNumCols = 6
+                               CALL Check(NF90_OPEN(TRIM(VectorFile),NF90_NOWRITE,NC_ID3))
+                            ELSE 
+                               ContourFileNumCols = 1
+                            ENDIF
                             ContourFileNumCols = 1
                             NC_File = 53
                         ENDIF
@@ -8343,8 +8621,12 @@ SUBROUTINE WriteXYZFiles(Record)
                         CALL Check(NF90_INQ_VARID(NC_ID2,'time',NC_Var))
                         CALL Check(NF90_INQUIRE_VARIABLE(NC_ID2,NC_Var,dimids=NC_DimIDs))
                         CALL Check(NF90_INQUIRE_DIMENSION(NC_ID2,NC_DimIDs(1),len=NumRecs))
-                        CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,NC_Time,start=(/Record/),count=(/1/)))
-                        CurrentTime = NC_Time(1)
+                        IF (NumRecs > 0) THEN
+                            CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,NC_Time,start=(/min(NumRecs,Record)/),count=(/1/)))
+                            CurrentTime = NC_Time(1)
+                        ELSE
+                            CurrentTime = 0d0
+                        ENDIF
                         NC_Status = NF90_INQ_VARID(NC_ID2,'zeta',NC_Var)
                         IF(NC_Status.EQ.NF90_NOERR)THEN
                             ContourFileNumCols = 1
@@ -8405,6 +8687,13 @@ SUBROUTINE WriteXYZFiles(Record)
                             NC_Status = NF90_INQ_DIMID(NC_ID2,'num_const',NC_Dim)
                             NC_Status = NF90_INQUIRE_DIMENSION(NC_ID2,NC_Dim,len=NumRecs)
                             ContourFileNumCols = 1
+                            IF (ContourFileType(17:19).eq.'phs') THEN
+                               ContourFileNumCols = -2
+                            ELSEIF (ContourFileType(17:18).eq.'ef') THEN
+                               write(6,*) 'Calc energy flux',TRIM(VectorFile2)
+                               ContourFileNumCols = 6
+                               CALL Check(NF90_OPEN(TRIM(VectorFile2),NF90_NOWRITE,NC_ID4))
+                            ENDIF
                             NC_File = 53
                         ENDIF
 #endif
@@ -8516,7 +8805,18 @@ SUBROUTINE WriteXYZFiles(Record)
                     IF(.NOT.ALLOCATED(V2))    ALLOCATE(V2(1:NumNodesGlobal))
                     IF(.NOT.ALLOCATED(Vels1)) ALLOCATE(Vels1(1:NumNodesGlobal))
                     IF(.NOT.ALLOCATED(Vels2)) ALLOCATE(Vels2(1:NumNodesGlobal))
-
+                    !IF (ContourFileNumCols.eq.-2) THEN
+                       IF(.NOT.ALLOCATED(VelsZ1)) ALLOCATE(VelsZ1(1:NumNodesGlobal))
+                       IF(.NOT.ALLOCATED(VelsZ2)) ALLOCATE(VelsZ2(1:NumNodesGlobal))
+                    !ENDIF
+                    IF (ContourFileNumCols.eq.6.AND..NOT.ALLOCATED(H1)) THEN
+                       ALLOCATE(H1(1:NumNodesGlobal))
+                       ALLOCATE(Uamp(1:NumNodesGlobal))
+                       ALLOCATE(Uphs(1:NumNodesGlobal))
+                       ALLOCATE(Vamp(1:NumNodesGlobal))
+                       ALLOCATE(Vphs(1:NumNodesGlobal))
+                    ENDIF
+                    
                     IF(INDEX(TRIM(ContourFile1),"64").GT.0)THEN
                         DO I=1,NumNodesGlobal
                             U1(I)    = -99999.0
@@ -8534,6 +8834,15 @@ SUBROUTINE WriteXYZFiles(Record)
                             V2(I)    = DefaultValue * ContourConversionFactor
                             Vels1(I) = DefaultValue * ContourConversionFactor
                             Vels2(I) = DefaultValue * ContourConversionFactor
+                            VelsZ1(I) = CMPLX(DefaultValue) * ContourConversionFactor
+                            VelsZ2(I) = CMPLX(DefaultValue) * ContourConversionFactor
+                            IF (ContourFileNumCols.eq.6) THEN
+                               H1(I) = DefaultValue * ContourConversionFactor
+                               Uamp(I) = DefaultValue * ContourConversionFactor
+                               Uphs(I) = DefaultValue * ContourConversionFactor
+                               Vamp(I) = DefaultValue * ContourConversionFactor
+                               Vphs(I) = DefaultValue * ContourConversionFactor
+                            ENDIF
                         ENDDO
                     ELSE
                         DO I=1,NumNodesGlobal
@@ -8543,6 +8852,15 @@ SUBROUTINE WriteXYZFiles(Record)
                             V2(I)    = DefaultValue
                             Vels1(I) = DefaultValue
                             Vels2(I) = DefaultValue
+                            VelsZ1(I) = CMPLX(DefaultValue)
+                            VelsZ2(I) = CMPLX(DefaultValue)
+                            IF (ContourFileNumCols.eq.6) THEN
+                               H1(I) = DefaultValue
+                               Uamp(I) = DefaultValue 
+                               Uphs(I) = DefaultValue 
+                               Vamp(I) = DefaultValue 
+                               Vphs(I) = DefaultValue 
+                            ENDIF
                         ENDDO
                     ENDIF
 
@@ -8588,9 +8906,107 @@ SUBROUTINE WriteXYZFiles(Record)
                         ELSEIF(NC_File.EQ.53)THEN
                             CALL Check(NF90_INQ_VARID(NC_ID1,ContourFileType(14:16),NC_Var))
                             CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,U1,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            IF (ContourFileNumCols.eq.-2) THEN
+                               CALL Check(NF90_INQ_VARID(NC_ID1,ContourFileType(17:19),NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V1,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            ELSEIF (ContourFileType(17:18).eq.'ef') THEN
+                               write(6,*) 'read_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID1,'phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V1,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read depth'
+                               CALL Check(NF90_INQ_VARID(NC_ID1,'depth',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,H1,start=(/1/),count=(/NumNodesGlobal/)))
+                               write(6,*) 'read u_amp'
+                               CALL Check(NF90_INQ_VARID(NC_ID3,'u_amp',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID3,NC_Var,Uamp,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read u_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID3,'u_phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID3,NC_Var,Uphs,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read v_amp'
+                               CALL Check(NF90_INQ_VARID(NC_ID3,'v_amp',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID3,NC_Var,Vamp,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read v_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID3,'v_phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID3,NC_Var,Vphs,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            ENDIF
                         ENDIF
 #endif
                     ENDIF
+                    DO I=1,NumNodes1
+
+                        IF(ContourFileNumCols.EQ.1)THEN
+
+                            IF(TRIM(ContourFileFormat1).EQ."ASCII")THEN
+#ifdef SLOWREAD
+                                CALL ReadNodeVals(19,LEN_TRIM(ContourFile1),TRIM(ContourFile1),1,JunkI,JunkR1,JunkR2)
+#else
+                                READ(19,*) JunkI,JunkR1
+#endif
+                                U1(JunkI) = JunkR1
+                                IF(U1(JunkI).GT.-99998.0)THEN
+                                    U1(JunkI) = U1(JunkI) * ContourConversionFactor
+                                ENDIF
+                                Vels1(JunkI) = U1(JunkI)
+                            ELSEIF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
+#ifdef NETCDF
+                                IF(U1(I).GT.-99998.0)THEN
+                                    U1(I) = U1(I) * ContourConversionFactor
+                                ENDIF
+                                Vels1(I) = U1(I)
+#endif
+                            ENDIF
+
+                        ELSEIF(ContourFileNumCols.EQ.2)THEN
+
+                            IF(TRIM(ContourFileFormat1).EQ."ASCII")THEN
+#ifdef SLOWREAD
+                                CALL ReadNodeVals(19,LEN_TRIM(ContourFile1),TRIM(ContourFile1),2,JunkI,JunkR1,JunkR2)
+#else
+                                READ(19,*) JunkI,JunkR1,JunkR2
+#endif
+                                U1(JunkI) = JunkR1
+                                V1(JunkI) = JunkR2
+                                Vels1(JunkI) = ContourConversionFactor * SQRT(U1(JunkI)*U1(JunkI)+V1(JunkI)*V1(JunkI))
+                            ELSEIF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
+#ifdef NETCDF
+                                Vels1(I) = ContourConversionFactor * SQRT(U1(I)*U1(I)+V1(I)*V1(I))
+#endif
+                            ENDIF
+                        ELSEIF(ContourFileNumCols.EQ.-2)THEN
+
+                            IF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
+#ifdef NETCDF
+                                VelsZ1(I) = ContourConversionFactor * U1(I)*EXP(CMPLX(0,1)*V1(I)*Deg2Rad)
+#endif
+                            ENDIF
+                        
+                        ELSEIF(ContourFileNumCols.EQ.6)THEN
+#ifdef NETCDF
+                               IF(U1(I).ne.DefaultValue.and.Uamp(I).ne.DefaultValue.and.Vamp(I).ne.DefaultValue) THEN
+                                 Eamp = U1(I); phsE = V1(I)*Deg2Rad 
+                                 phsU = Uphs(I)*Deg2Rad; phsV = Vphs(I)*Deg2Rad
+!                                Energy flux in x-direction
+                                 U1(I) = g*0.5d0*H1(I)*Eamp*Uamp(I)*COS(phsU - phsE)
+!                                Energy flux in y-direction
+                                 V1(I) = g*0.5d0*H1(I)*Eamp*Vamp(I)*COS(phsV - phsE)
+!                                Energy flux as a scalar
+                                 Vels1(I) = ContourConversionFactor * SQRT(U1(I)*U1(I)+V1(I)*V1(I))
+                               ENDIF
+#endif
+
+                        ENDIF
+
+                    ENDDO
+                        DO I=1,NumNodesGlobal
+                            IF (ContourFileNumCols.eq.6) THEN
+                               H1(I) = DefaultValue
+                               Uamp(I) = DefaultValue 
+                               Uphs(I) = DefaultValue 
+                               Vamp(I) = DefaultValue 
+                               Vphs(I) = DefaultValue 
+                            ENDIF
+                        ENDDO
+                    
                     IF(TRIM(ContourFileFormat2).EQ."NETCDF")THEN
 #ifdef NETCDF
                         IF(NC_File.EQ.63)THEN
@@ -8633,54 +9049,32 @@ SUBROUTINE WriteXYZFiles(Record)
                         ELSEIF(NC_File.EQ.53)THEN
                             CALL Check(NF90_INQ_VARID(NC_ID2,ContourFileType(14:16),NC_Var))
                             CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,U2,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            IF (ContourFileNumCols.eq.-2) THEN
+                               CALL Check(NF90_INQ_VARID(NC_ID2,ContourFileType(17:19),NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,V2,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            ELSEIF (ContourFileType(17:18).eq.'ef') THEN
+                               write(6,*) 'read_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID2,'phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,V2,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read depth'
+                               CALL Check(NF90_INQ_VARID(NC_ID2,'depth',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,H1,start=(/1/),count=(/NumNodesGlobal/)))
+                               write(6,*) 'read u_amp'
+                               CALL Check(NF90_INQ_VARID(NC_ID4,'u_amp',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID4,NC_Var,Uamp,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read u_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID4,'u_phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID4,NC_Var,Uphs,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read v_amp'
+                               CALL Check(NF90_INQ_VARID(NC_ID4,'v_amp',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID4,NC_Var,Vamp,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                               write(6,*) 'read v_phs'
+                               CALL Check(NF90_INQ_VARID(NC_ID4,'v_phs',NC_Var))
+                               CALL Check(NF90_GET_VAR(NC_ID4,NC_Var,Vphs,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                            ENDIF
                         ENDIF
 #endif
                     ENDIF
-
-                    DO I=1,NumNodes1
-
-                        IF(ContourFileNumCols.EQ.1)THEN
-
-                            IF(TRIM(ContourFileFormat1).EQ."ASCII")THEN
-#ifdef SLOWREAD
-                                CALL ReadNodeVals(19,LEN_TRIM(ContourFile1),TRIM(ContourFile1),1,JunkI,JunkR1,JunkR2)
-#else
-                                READ(19,*) JunkI,JunkR1
-#endif
-                                U1(JunkI) = JunkR1
-                                IF(U1(JunkI).GT.-99998.0)THEN
-                                    U1(JunkI) = U1(JunkI) * ContourConversionFactor
-                                ENDIF
-                                Vels1(JunkI) = U1(JunkI)
-                            ELSEIF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
-#ifdef NETCDF
-                                IF(U1(I).GT.-99998.0)THEN
-                                    U1(I) = U1(I) * ContourConversionFactor
-                                ENDIF
-                                Vels1(I) = U1(I)
-#endif
-                            ENDIF
-
-                        ELSEIF(ContourFileNumCols.EQ.2)THEN
-
-                            IF(TRIM(ContourFileFormat1).EQ."ASCII")THEN
-#ifdef SLOWREAD
-                                CALL ReadNodeVals(19,LEN_TRIM(ContourFile1),TRIM(ContourFile1),2,JunkI,JunkR1,JunkR2)
-#else
-                                READ(19,*) JunkI,JunkR1,JunkR2
-#endif
-                                U1(JunkI) = JunkR1
-                                V1(JunkI) = JunkR2
-                                Vels1(JunkI) = ContourConversionFactor * SQRT(U1(JunkI)*U1(JunkI)+V1(JunkI)*V1(JunkI))
-                            ELSEIF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
-#ifdef NETCDF
-                                Vels1(I) = ContourConversionFactor * SQRT(U1(I)*U1(I)+V1(I)*V1(I))
-#endif
-                            ENDIF
-
-                        ENDIF
-
-                    ENDDO
 
                     DO I=1,NumNodes2
 
@@ -8722,6 +9116,27 @@ SUBROUTINE WriteXYZFiles(Record)
                                 Vels2(I) = ContourConversionFactor * SQRT(U2(I)*U2(I)+V2(I)*V2(I))
 #endif
                             ENDIF
+                        ELSEIF(ContourFileNumCols.EQ.-2)THEN
+
+                            IF(TRIM(ContourFileFormat1).EQ."NETCDF")THEN
+#ifdef NETCDF
+                                VelsZ2(I) = ContourConversionFactor * U2(I)*EXP(CMPLX(0,1)*V2(I)*Deg2Rad)
+#endif
+                            ENDIF
+ 
+                        ELSEIF(ContourFileNumCols.EQ.6)THEN
+#ifdef NETCDF
+                               IF(U2(I).ne.DefaultValue.and.Uamp(I).ne.DefaultValue.and.Vamp(I).ne.DefaultValue) THEN
+                                 Eamp = U2(I); phsE = V2(I)*Deg2Rad 
+                                 phsU = Uphs(I)*Deg2Rad; phsV = Vphs(I)*Deg2Rad
+!                                Energy flux in x-direction
+                                 U2(I) = g*0.5d0*H1(I)*Eamp*Uamp(I)*COS(phsU - phsE)
+!                                Energy flux in y-direction
+                                 V2(I) = g*0.5d0*H1(I)*Eamp*Vamp(I)*COS(phsV - phsE)
+!                                Energy flux as a scalar
+                                 Vels2(I) = ContourConversionFactor * SQRT(U2(I)*U2(I)+V2(I)*V2(I))
+                               ENDIF
+#endif
 
                         ENDIF
 
@@ -8729,21 +9144,45 @@ SUBROUTINE WriteXYZFiles(Record)
 
                     DO I=1,NumNodesLocal
 
-!                       Z(I) = Vels1(XYZNodes(I)) - Vels2(XYZNodes(I))
-                        IF((Vels1(XYZNodes(I)).LT.-90000).AND.(Vels2(XYZNodes(I)).GT.-90000))THEN
-                            Z(I) = 0.0d0 - Vels2(XYZNodes(I))
-                        ELSEIF((Vels1(XYZNodes(I)).GT.-90000).AND.(Vels2(XYZNodes(I)).LT.-90000))THEN
-                            Z(I) = Vels1(XYZNodes(I))
-                        ELSEIF((Vels1(XYZNodes(I)).LT.-90000).AND.(Vels2(XYZNodes(I)).LT.-90000))THEN
-                            Z(I) = 0.0d0
-                        ELSEIF(ContourFileType(14:16).eq.'phs') THEN
-                            ! WJP: Need to check plus 360 and -360 degrees for
-                            ! phase
-                            Z(I) = min(Vels1(XYZNodes(I)) - Vels2(XYZNodes(I)),      &
+                        IF (ContourFileNumCols.eq.-2) THEN
+                            !IF(REAL(VelsZ1(XYZNodes(I))).LT.-90000.AND.(REAL(VelsZ2(XYZNodes(I))).GT.-90000))THEN
+                            !   Z(I) = ABS(VelsZ2(XYZNodes(I)))
+                            !ELSEIF(REAL(VelsZ1(XYZNodes(I))).GT.-90000.AND.(REAL(VelsZ2(XYZNodes(I))).LT.-90000))THEN
+                            !   Z(I) = ABS(VelsZ1(XYZNodes(I)))
+                            IF(REAL(VelsZ1(XYZNodes(I))).LT.-90000.OR.(REAL(VelsZ2(XYZNodes(I))).LT.-90000))THEN
+                               Z(I) = -88888.
+                            ELSEIF(ContourConversionFactor.eq.9999) THEN
+                               !WJP: Normalized difference
+                               Z(I) = ABS(VelsZ1(XYZNodes(I)) - VelsZ2(XYZNodes(I)))/ABS(VelsZ2(XYZNodes(I)))
+                            ELSE
+                               ! WJP: vector difference multiplies by half inside the sqrt 
+                               !      to give equivalent of RMS for a single constituent 
+                               Z(I) = 0.5d0*SQRT(2d0)*ABS(VelsZ1(XYZNodes(I)) - VelsZ2(XYZNodes(I)))
+                            ENDIF
+                        ELSE
+!                        Z(I) = Vels1(XYZNodes(I)) - Vels2(XYZNodes(I))
+                            IF((Vels1(XYZNodes(I)).LT.-90000).AND.(Vels2(XYZNodes(I)).GT.-90000))THEN
+                               Z(I) = 0.0d0 - Vels2(XYZNodes(I))
+                            ELSEIF((Vels1(XYZNodes(I)).GT.-90000).AND.(Vels2(XYZNodes(I)).LT.-90000))THEN
+                               Z(I) = Vels1(XYZNodes(I))
+                            ELSEIF((Vels1(XYZNodes(I)).LT.-90000).AND.(Vels2(XYZNodes(I)).LT.-90000))THEN
+                               Z(I) = 0.0d0
+                            ELSEIF(ContourFileType(14:16).eq.'phs') THEN
+                               ! WJP: Need to check plus 360 and -360 degrees for
+                               ! phase
+                               Z(I) = min(Vels1(XYZNodes(I)) - Vels2(XYZNodes(I)),   &
                                       360 + Vels1(XYZNodes(I)) - Vels2(XYZNodes(I)), &
                                       Vels1(XYZNodes(I)) - Vels2(XYZNodes(I)) - 360)
-                        ELSE
-                            Z(I) = Vels1(XYZNodes(I)) - Vels2(XYZNodes(I))
+                            ELSEIF(ContourConversionFactor.eq.9999) THEN
+                               ! WJP: Normalized difference
+                               IF (abs(Vels2(XYZNodes(I))).gt.1d-6) THEN
+                                  Z(I) = (Vels1(XYZNodes(I)) - Vels2(XYZNodes(I)))/abs(Vels2(XYZNodes(I)))
+                               ELSE
+                                  Z(I) = 0.0d0
+                               ENDIF
+                            ELSE
+                               Z(I) = Vels1(XYZNodes(I)) - Vels2(XYZNodes(I))
+                            ENDIF
                         ENDIF
 
                         IF(OptimizeContours.EQ.1)THEN
@@ -8801,8 +9240,16 @@ SUBROUTINE WriteXYZFiles(Record)
 
                     DO I=1,NumNodesLocal
 
-                        Z(I) = (Bath1(XYZNodes(I)) - Bath2(XYZNodes(I))) * ContourConversionFactor
-
+                        IF(ContourConversionFactor.eq.9999) THEN
+                           ! WJP: Normalized difference
+                           IF (abs(Bath2(XYZNodes(I))).gt.1d-6) THEN
+                              Z(I) = (Bath1(XYZNodes(I)) - Bath2(XYZNodes(I)))/abs(Bath2(XYZNodes(I)))
+                           ELSE
+                              Z(I) = 0.0d0
+                           ENDIF
+                        ELSE
+                           Z(I) = (Bath1(XYZNodes(I)) - Bath2(XYZNodes(I))) * ContourConversionFactor
+                        ENDIF
                         IF(OptimizeContours.EQ.1)THEN
                            IF(BdyNodes(XYZNodes(I)))THEN
                               Z(I) = -88888.
@@ -9127,8 +9574,9 @@ SUBROUTINE WriteXYZFiles(Record)
                                 IF (Column_No.eq.1) THEN
                                     READ(UNIT=19,FMT=*) JunkI, JunkR
                                 ELSE
-                                    READ(UNIT=19,FMT=*) JunkI, JunkR1, JunkR2
-                                    JunkR = sqrt(JunkR1**2 + JunkR2**2)
+                                    READ(UNIT=19,FMT=*) JunkI, JunkR1, JunkR2, JunkR3
+                                    JunkR = max(abs(JunkR1) + abs(JunkR3),&
+                                                abs(JunkR2) + abs(JunkR3))
                                 ENDIF
                                 Attributes1(JunkI) = JunkR
 
@@ -9263,8 +9711,9 @@ SUBROUTINE WriteXYZFiles(Record)
                                 IF (Column_No.eq.1) THEN
                                     READ(UNIT=23,FMT=*) JunkI, JunkR
                                 ELSE
-                                    READ(UNIT=23,FMT=*) JunkI, JunkR1, JunkR2
-                                    JunkR = sqrt(JunkR1**2 + JunkR2**2)
+                                    READ(UNIT=23,FMT=*) JunkI, JunkR1, JunkR2, JunkR3
+                                    JunkR = max(abs(JunkR1) + abs(JunkR3),&
+                                                abs(JunkR2) + abs(JunkR3))
                                 ENDIF
                                 Attributes2(JunkI) = JunkR
 
@@ -9430,8 +9879,13 @@ SUBROUTINE WriteXYZFiles(Record)
                 CALL Check(NF90_INQ_VARID(NC_ID1,'time',NC_Var))
                 CALL Check(NF90_INQUIRE_VARIABLE(NC_ID1,NC_Var,dimids=NC_DimIDs))
                 CALL Check(NF90_INQUIRE_DIMENSION(NC_ID1,NC_DimIDs(1),len=NumRecs))
-                CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,NC_Time,start=(/Record/),count=(/1/)))
-                CurrentTime = NC_Time(1)
+                write(6,*) 'NumRecs for vector',NumRecs
+                IF (NumRecs.gt.0) THEN
+                    CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,NC_Time,start=(/min(NumRecs,Record)/),count=(/1/)))
+                    CurrentTime = NC_Time(1)
+                ELSE
+                    CurrentTime = 0d0
+                ENDIF
                 NC_Status = NF90_INQ_VARID(NC_ID1,'u-vel',NC_Var)
                 IF(NC_Status.EQ.NF90_NOERR)THEN
                     VectorFileNumCols = 2
@@ -9441,6 +9895,14 @@ SUBROUTINE WriteXYZFiles(Record)
                 IF(NC_Status.EQ.NF90_NOERR)THEN
                     VectorFileNumCols = 2
                     NC_File = 74
+                ENDIF
+                NC_Status = NF90_INQ_VARID(NC_ID1,'u_amp',NC_Var)
+                IF(NC_Status.EQ.NF90_NOERR)THEN
+                    VectorFileNumCols = 4
+                    NC_File = 54
+                    IF (VectorFileType(14:15).eq.'ef') THEN
+                       CALL Check(NF90_OPEN(TRIM(ContourFile1),NF90_NOWRITE,NC_ID2))
+                    ENDIF 
                 ENDIF
                 VectorFileIsContourFile = 0
 #endif
@@ -9476,6 +9938,8 @@ SUBROUTINE WriteXYZFiles(Record)
                     CALL Check(NF90_INQ_VARID(NC_ID1,'u-vel',NC_Var))
                 ELSEIF(NC_File.EQ.74)THEN
                     CALL Check(NF90_INQ_VARID(NC_ID1,'windx',NC_Var))
+                ELSEIF(NC_File.EQ.54)THEN
+                    CALL Check(NF90_INQ_VARID(NC_ID1,'u_amp',NC_Var))
                 ENDIF
                 CALL Check(NF90_GET_ATT(NC_ID1,NC_Var,'_FillValue',DefaultValue))
 #endif
@@ -9486,9 +9950,17 @@ SUBROUTINE WriteXYZFiles(Record)
                 DefaultValue = DefaultValue * VectorConversionFactor
                 IF(.NOT.ALLOCATED(U1)) ALLOCATE(U1(1:NumNodesGlobal))
                 IF(.NOT.ALLOCATED(V1)) ALLOCATE(V1(1:NumNodesGlobal))
+                IF(.NOT.ALLOCATED(U2)) ALLOCATE(U2(1:NumNodesGlobal))
+                IF(.NOT.ALLOCATED(V2)) ALLOCATE(V2(1:NumNodesGlobal))
+                IF(.NOT.ALLOCATED(Uamp)) ALLOCATE(Uamp(1:NumNodesGlobal))
+                IF(.NOT.ALLOCATED(Uphs)) ALLOCATE(Uphs(1:NumNodesGlobal))
                 DO I=1,NumNodesGlobal
                     U1(I) = DefaultValue
                     V1(I) = DefaultValue
+                    U2(I) = DefaultValue
+                    V2(I) = DefaultValue
+                    Uamp(I) = DefaultValue
+                    Uphs(I) = DefaultValue
                 ENDDO
             ELSEIF(VectorFileIsContourFile.EQ.1)THEN
                 DO I=1,NumNodesGlobal
@@ -9522,6 +9994,24 @@ SUBROUTINE WriteXYZFiles(Record)
                     CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,U1,start=(/1,Record/),count=(/NumNodesGlobal,1/)))
                     CALL Check(NF90_INQ_VARID(NC_ID1,'windy',NC_Var))
                     CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V1,start=(/1,Record/),count=(/NumNodesGlobal,1/)))
+                ELSEIF(NC_File.EQ.54)THEN
+                    write(6,*) 'reading u_amp for vector'
+                    CALL Check(NF90_INQ_VARID(NC_ID1,'u_amp',NC_Var))
+                    CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,U1,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                    CALL Check(NF90_INQ_VARID(NC_ID1,'v_amp',NC_Var))
+                    CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V1,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                    CALL Check(NF90_INQ_VARID(NC_ID1,'u_phs',NC_Var))
+                    CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,U2,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                    CALL Check(NF90_INQ_VARID(NC_ID1,'v_phs',NC_Var))
+                    CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,V2,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                    IF (VectorFileType(14:15).eq.'ef') THEN
+                       CALL Check(NF90_INQ_VARID(NC_ID1,'depth',NC_Var))
+                       CALL Check(NF90_GET_VAR(NC_ID1,NC_Var,H1,start=(/1/),count=(/NumNodesGlobal/)))
+                       CALL Check(NF90_INQ_VARID(NC_ID2,'amp',NC_Var))
+                       CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Uamp,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                       CALL Check(NF90_INQ_VARID(NC_ID2,'phs',NC_Var))
+                       CALL Check(NF90_GET_VAR(NC_ID2,NC_Var,Uphs,start=(/Record,1/),count=(/1,NumNodesGlobal/)))
+                    ENDIF
                 ENDIF
 #endif
             ENDIF
@@ -9546,8 +10036,34 @@ SUBROUTINE WriteXYZFiles(Record)
             ENDIF
 
             DO I=1,NumNodesLocal
-                WRITE(UNIT=17,FMT='(3(2X,F16.8))') X(I), Y(I), U1(XYZNodes(I)) * VectorConversionFactor
-                WRITE(UNIT=18,FMT='(3(2X,F16.8))') X(I), Y(I), V1(XYZNodes(I)) * VectorConversionFactor
+                IF (U1(XYZNodes(I)).ne.DefaultValue.and.V1(XYZNodes(I)).ne.DefaultValue) THEN
+                   IF (NC_File.EQ.54) THEN    
+                       IF (VectorFileType(14:15).eq.'ef') THEN 
+                          Eamp = Uamp(XYZNodes(I)); phsE = Uphs(XYZNodes(I))*Deg2Rad 
+                          IF (Eamp.ne.DefaultValue) THEN
+                             phsU = U2(XYZNodes(I))*Deg2Rad; phsV = V2(XYZNodes(I))*Deg2Rad
+!                            Energy flux in x-direction
+                             U1(XYZNodes(I)) = g*0.5d0*H1(XYZNodes(I))*Eamp*U1(XYZNodes(I))*COS(phsU - phsE)
+!                            Energy flux in y-direction
+                             V1(XYZNodes(I)) = g*0.5d0*H1(XYZNodes(I))*Eamp*V1(XYZNodes(I))*COS(phsV - phsE)
+                             WRITE(UNIT=17,FMT='(3(2X,F16.8))') X(I), Y(I), U1(XYZNodes(I))
+                             WRITE(UNIT=18,FMT='(3(2X,F16.8))') X(I), Y(I), V1(XYZNodes(I))
+                          ELSE
+                             WRITE(UNIT=17,FMT='(3(2X,F16.8))') X(I), Y(I), 0.0d0
+                             WRITE(UNIT=18,FMT='(3(2X,F16.8))') X(I), Y(I), 0.0d0
+                          ENDIF
+                       ELSE
+                          WRITE(UNIT=17,FMT='(3(2X,F16.8))') X(I), Y(I), U1(XYZNodes(I)) * COS(U2(XYZNodes(I))*Deg2Rad)
+                          WRITE(UNIT=18,FMT='(3(2X,F16.8))') X(I), Y(I), V1(XYZNodes(I)) * COS(V2(XYZNodes(I))*Deg2Rad)
+                       ENDIF
+                   ELSE
+                       WRITE(UNIT=17,FMT='(3(2X,F16.8))') X(I), Y(I), U1(XYZNodes(I)) * VectorConversionFactor
+                       WRITE(UNIT=18,FMT='(3(2X,F16.8))') X(I), Y(I), V1(XYZNodes(I)) * VectorConversionFactor
+                   ENDIF
+                ELSE
+                    WRITE(UNIT=17,FMT='(3(2X,F16.8))') X(I), Y(I), 0.0d0
+                    WRITE(UNIT=18,FMT='(3(2X,F16.8))') X(I), Y(I), 0.0d0
+                ENDIF
             ENDDO
 
             CLOSE(UNIT=17,STATUS="KEEP")
