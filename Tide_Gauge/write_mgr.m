@@ -9,6 +9,8 @@ fid = fopen([filename '.mgr'],'a');
 % write out station info
 fprintf(fid,'_______________________________________________________________________________________\n');
 fprintf(fid,'Station ID = %s \t: %s\n',M.ID,M.Name);
+fprintf(fid,'Country \t\t\t\t: %s\n',M.Country);
+fprintf(fid,'Contributor \t\t\t: %s\n',M.Contributor);
 fprintf(fid,'Station Location \t\t: %fN \t %fE\n',M.Lat,M.Lon);
 fprintf(fid,'Start time \t\t\t\t: %s\n',M.Start_Time);
 fprintf(fid,'End time \t\t\t\t: %s\n',M.End_Time);
