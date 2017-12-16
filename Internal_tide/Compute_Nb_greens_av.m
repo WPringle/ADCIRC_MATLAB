@@ -66,10 +66,7 @@ Nb_av  = zeros(np,1)  ;
 NbTemp   = zeros(nj,1) ; 
 
 % Gaussian function
-gaussC = @(dist, sigma2) pi^(-3/2) * (exp(-dist.^2./sigma2)); 
-%greensF = @(dist) 1./dist - (sqrt(pi)/2) * ...
-%                  (exp(-dist.^2./8)) .* besseli(0,dist.^2./8);
-
+gaussC = @(dist, sigma2) (exp(-dist.^2./sigma2)); 
 
 % set up kdtree
 Mdl = KDTreeSearcher(XX); 
@@ -90,10 +87,8 @@ for ii = 1:blocks
     for jj = 1:length(Idx)
         nn = nn + 1;
         val = gaussC(Dist{jj}(Dist{jj} < rcutfac*aiv(nn)), aiv(nn)^2); % Get the weights
-        %val = val/norm(val,1); % divide by the norm
-        %val2 = greensF(Dist{jj}(Dist{jj} < rcutfac*aiv(nn))/aiv(nn)); % Get the weights
+        val = val/norm(val,1); % divide by the norm
         NbTemp(nn) = val*Nb(Idx{jj}(Dist{jj} < rcutfac*aiv(nn))); %sum the Nb with weights
-        % NbTemp(nn) = mean(Nb(Idx{jj}(Dist{jj} < aiv(nn))));
     end
     disp(['finished block no. = ' num2str(ii)])
     toc
