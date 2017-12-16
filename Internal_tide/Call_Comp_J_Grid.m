@@ -1,14 +1,12 @@
 % Call the dJ_Nycander_grid function for a specified part of the grid and
 % save the resulting dh and dJ 
 %
-
-
 clearvars; 
 clc; 
 close all;
 % 
 % Select the bounding box
-lon_min = 20; %1234;
+lon_min = 80; %1234;
 lat_min = 0;  %4321;
 bbox = [lon_min lon_min + 10; lat_min lat_min + 10];
 
@@ -19,7 +17,7 @@ omega = 2*pi/(12.4206012*3600); % M2 tidal frequency
 MinDepth = 100; % m 
 
 % n data filename (only .mat file atm)
-N_filename = 'Indian_Ocean_N_100m_processed.mat';
+N_file = 'E:\Global_Data\WOD_CTD_Casts\Gridded_N_values.mat';
 
 % the gridded bathymetry data file
 bathyfile = ['E:\Global_Data\SRTM30_PLUS_w_Abyssal_Hills\' ...
@@ -40,7 +38,14 @@ I = find(lon > bbox(1,1) - 15 & lon < bbox(1,2) + 15);
 J = find(lat > bbox(2,1) - 15 & lat < bbox(2,2) + 15);
 lon = lon(I); lat = lat(J); bathy = bathy(I,J)';
     
-[dJx, dJy, dhx, dhy,lon_c, lat_c] = dJ_Nycander_grid(lon,lat,bathy,...
-                                       N_filename,omega,-MinDepth,bbox,4);
+%Bf = load(N_file); 
+[lon, lat] = meshgrid(lon,lat);
+%Compute_Nb_Nm_Gridded(lon_M,lat_M,B,zcontour,N,lon_N,lat_N)
+%[~,Nm] = Compute_Nb_Nm_Gridded(lon,lat,-bathy,Bf.z,Bf.N,Bf.lon,Bf.lat);
+% 
+%save(S_filename,'Nm');
+load(S_filename)
+[dJx, dJy, lon_c, lat_c] = Calc_dJ_Nyc_Struc(lon,lat,bathy,Nm,...
+                                             omega,-MinDepth,1e3,bbox,0);
                                    
 save(S_filename,'dJx', 'dJy', 'dhx', 'dhy', 'lon_c', 'lat_c');     

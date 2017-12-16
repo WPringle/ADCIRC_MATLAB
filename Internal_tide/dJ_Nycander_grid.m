@@ -47,8 +47,8 @@ psi = 2*7.29212d-5;
 beta = 1.455;
 
 % Some arbitrary settings for the numerics 
-rcutfac = 2.5 ; % Elements within |r - r'| < rcutfac*a will be used in the calculation of dJ/dx
-acut = 2   ; % if a < acut (in km), ignore 
+rcutfac = 5 ; % Elements within |r - r'| < rcutfac*a will be used in the calculation of dJ/dx
+acut = 1   ; % if a < acut (in km), ignore 
 
 %Setting up parallel
 if parallel > 0
@@ -82,8 +82,8 @@ h_c   = 0.5*(bathy(1:end-1,:) + bathy(2:end,:));
 h_c   = 0.5*(h_c(:,1:end-1) + h_c(:,2:end));
 
 % Find bounds
-I = find( lon_c(1,:) > bbox(1,1) & lon_c(1,:) < bbox(1,2));
-J = find( lat_c(:,1) > bbox(2,1) & lat_c(:,1) < bbox(2,2));
+I = find( lon_c(1,:) > bbox(1,1) & lon_c(1,:) <= bbox(1,2));
+J = find( lat_c(:,1) > bbox(2,1) & lat_c(:,1) <= bbox(2,2));
 
 % Only keep part we want to calc.
 lat_c = lat_c(J,I); lon_c = lon_c(J,I); h_c = h_c(J,I); 
@@ -98,6 +98,7 @@ Bf = load(N_file);
 f = psi*sind(lat_c) ;            % Coriolis coefficients
 dom = pi*sqrt(omega^2 - f.^2);   % dominator of the cutoff length
 a = (beta./dom).*-h_c.*Nm ;      % the cutoff length
+a = real(a);
 
 % Get the d_x values on the wgs84 spheroid
 d_x = m_idist(lon(J(1):J(end),I(1):I(end)),lat(J(1):J(end),I(1):I(end)),...
@@ -177,6 +178,7 @@ parfor l_y = 1:lat_n
         dJx(l_y,l_x) = Jx_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc;
         dJy(l_y,l_x) = Jy_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc;     
     end
+    disp(['dJx = ' num2str(dJx(l_y,l_x))])
 end
 if parallel > 0
     delete(gcp('nocreate'));
