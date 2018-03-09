@@ -24,7 +24,7 @@ function fid = FnGlobal_SAL_to_fort24( f24out, f14in, f15tipname, ...
 % avisoloc = './AVISO_DIREC'                                              %
 % f15tipname = { 'M2', 'O1', 'S2', 'N2', 'K2', 'K1', 'Q1', 'P1'}          %
 %                                                                         %
-% Global_SAL_to_fort24( f24, f14, f15tipname, lonlat0, avisoloc, saldata )%
+% FnGlobal_SAL_to_fort24(f24, f14, f15tipname, lonlat0, avisoloc, saldata)%
 %                                                                         %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -109,8 +109,13 @@ x = R * (lon - lon0) * cos(lat0);
 y = R * lat;
 
 % % Get mesh info
-[~,VX,~,~,~,~] = readfort14( fort14 ) ;
-
+if strcmp(fort14(end-2:end),'grd') || strcmp(fort14(end-1:end),'14')
+    [~,VX,~,~,~,~] = readfort14( fort14 , 0) ;
+else strcmp(fort14(end-2:end),'mat')
+    load(fort14)
+end 
+% Ensuring 0 to 360
+VX(VX(:,1) < 0,1) = VX(VX(:,1) < 0,1) + 360;
 % Doing the CPP conversion
 xx = VX(:,1) * pi/180; yy = VX(:,2) * pi/180; 
 xx = R * (xx - lon0) * cos(lat0);
