@@ -11,18 +11,26 @@
 
 clearvars; close all; clc; 
 %% Parameters to set
+
+% input fort.14 name
+fort14    = 'ECGC_20km_73sec.14';
+% output fort.15 name
+fort15    = 'fort.15.TPXOb';
+
+[~,VX,~,opedat] = readfort14( fort14, 1 ) ;
+
 % Select desired projection (using m_map)
 proj = 'Mercator';
               
 % Specify limits of grid
-lat_min = -75; lat_max = 12;
-lon_min = 18;  lon_max = 135;
+lat_min = min(VX(:,2)); lat_max = max(VX(:,2));
+lon_min = min(VX(:,1)); lon_max = max(VX(:,1));
 
 m_proj(proj,'lon',[ lon_min lon_max],...
             'lat',[ lat_min lat_max])
 
 % Constituents that we want in the order that we want
-const = {'m2','s2','k1','o1','n2','k2','p1','q1','m4'};
+const = {'m2','s2','k1','o1','n2','k2','p1','q1'};
 
 % Specify tidal database (choose TPXO8 or FES2014) and 
 % directory files are in
@@ -35,10 +43,7 @@ database_direc = 'E:\Global_Data\TPXO8_TIDES\';
 %database = 'FES2014';
 %database_direc = 'E:\Global_Data\AVISO_TIDES\FES2014\';
 
-% input fort.14 name
-fort14    = '../IDIOMS_v7.1_SSG+TPXAnt_D2G.grd';
-% output fort.15 name
-fort15    = 'fort.15.TPXOb';
+
 %-------------------------------------------------------------------------
 % Should be no reason to change below
 %-------------------------------------------------------------------------
@@ -54,8 +59,6 @@ elseif strcmp(database,'FES2014')
 end    
 
 %% Get boundary info
-[~,VX,~,opedat,~,~] = readfort14( fort14 ) ;
-
 b_lon = zeros(opedat.neta,1);
 b_lat = zeros(opedat.neta,1);
 node_num = zeros(opedat.neta,1);
@@ -81,7 +84,7 @@ elseif strcmp(database,'FES2014')
     lat = ncread(tide_grid,'lat');
     lon = double(lon); lat = double(lat);
 end
-
+lon(lon > 180) = lon(lon > 180) - 360;
 lat_s = length(lat);
 lon_s = length(lon);
 [lx,ly] = meshgrid(lon,lat);
