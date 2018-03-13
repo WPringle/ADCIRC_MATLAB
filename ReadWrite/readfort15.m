@@ -149,7 +149,7 @@ end
 
 % ESLM, ESLC
 f15dat.elsm = [] ;
-if ( f15dat.im <= 2 | f15dat.im == 10 )
+if ( f15dat.im <= 2 | f15dat.im == 10 | f15dat.im >= 111111 )
     f15dat.elsm = readlinevec( fid ) ; 
 end
 
