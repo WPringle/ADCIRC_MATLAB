@@ -38,14 +38,15 @@ for zvalue = 1:length(zcontour)
     J = find( B > zcontour(max(1,zvalue-1)));
     
     % Make the interp cell and interpolate into it
-    N_interp{zvalue}    = NaN(length(B),1);
+    N_interp{zvalue}    = NaN(size(B));
     N_interp{zvalue}(J) = F(lon_M(J),lat_M(J));
-    
-    % Nearest neighbour for NaN results
-    idn = find(isnan(N_interp{zvalue}(J)));
-    idg = find(~isnan(N_interp{zvalue}(J)));
-    idx = knnsearch([lon_M(J(idg)) lat_M(J(idg))],[lon_M(J(idn)) lat_M(J(idn))]);
-    N_interp{zvalue}(J(idn)) = N_interp{zvalue}(J(idg(idx)));
+    % Nearest neighbour fill for NaN results
+    while ~isempty(find(isnan(N_interp{zvalue}(J)), 1))
+        N_interp{zvalue} = fillmissing(N_interp{zvalue},'nearest',1);
+        if size(N_interp{zvalue},2) > 1
+            N_interp{zvalue} = fillmissing(N_interp{zvalue},'nearest',2);
+        end
+    end
 end
 %
 for zvalue = 1:length(zcontour)  

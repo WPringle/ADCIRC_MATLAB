@@ -33,7 +33,7 @@ for i = 1: nAttr
     
     % val = fscanf( fid, '%g ', valpernode ) ; 
     
-    fprintf( fid, '%10.7f ', fort13dat.defval.Atr(i).Val ) ;
+    fprintf( fid, '%15.9e ', fort13dat.defval.Atr(i).Val ) ;
     fprintf( fid, '\n' ) ; 
 end
 
@@ -55,7 +55,7 @@ for i = 1: nAttr
         % Get a proper format
         str = '%d' ;
         for ll = 1: valpernode - 1
-            str = [str ' %11.7f'] ;
+            str = [str ' %15.9e'] ;
         end
         str = [str '\n' ] ;
         

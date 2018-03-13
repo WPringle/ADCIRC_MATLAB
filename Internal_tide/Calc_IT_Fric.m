@@ -56,35 +56,32 @@ f = psi*sind(obj.p(:,2));
 %% Load the constant contours of N values and compute Nb and Nmean
 if ~isempty(N_filename)
     load(N_filename);  
-    [Nb,Nm,Nmw] = Compute_Nb_Nm_Gridded(obj.p(:,1),obj(:,2),obj.b,z,N,lon,lat);                   
+    [Nb,Nm,Nmw] = Compute_Nb_Nm_Gridded(obj.p(:,1),obj.p(:,2),obj.b,z,N,lon,lat);                   
 end
 
 %% Getting the J stuff if required (tensor type)
-if strcmp(type,'tensor') || strcmp(type,'tensor_to_scalar')
-        % Compute gradients of J from Nb, Nm and bathymetry B, and grid  
-        [J,dJ] = Compute_J_Nycander(obj.t,obj.p,obj.b,Nm,omega,...
-                                       2,MinDepth,proj,[],4);                    
+if strcmp(type,'tensor')
+   % Compute gradients of J from Nb, Nm and bathymetry B, and grid  
+   [~,dJ] = Compute_J_Nycander(obj.t,obj.p,obj.b,Nm,omega,...
+                               2,MinDepth,proj,[],4);                    
 end
-%
-H2_mesh = obj.bx.^2 + obj.by.^2;
 
 %% Calculate F_it from Nb, Nm, Jx, Jy, and H2_mesh or as reqd.
 if isempty(N_filename)
-    
+    F_it = C_it * ones(size(obj,b));
 else
     Nb_t = Nb;
     if strcmp(crit,'Nmw')
         Nb_t = Nmw;
     end
-    if strcmp(type,'scalar')
-       F_it = C_it * sqrt((Nb_t.^2 - omega^2).*(Nm.^2 - omega^2)).*H2_mesh/omega;
-    elseif strcmp(type,'directional')
+    if strcmp(type,'scalar') || strcmp(type,'directional')
        F_it = C_it * sqrt((Nb_t.^2 - omega^2).*(Nm.^2 - omega^2))/omega;
     elseif strcmp(type,'tensor') || strcmp(type,'tensor_to_scalar')
        F_it = C_it * Nb_t/(4*pi).*sqrt(1-f.^2/omega^2)./obj.b;
     end
     F_it = real(F_it); % in case becomes complex due to minus square root
-
+    %
+    H2_mesh = obj.bx.^2 + obj.by.^2;
     %% Compute criticality and normalise the friction
     alpha2  = (omega^2 - f.^2)./(Nb_t.^2 - omega^2);
     if ~strcmp(crit,'none')
@@ -102,59 +99,103 @@ F_it(obj.b < MinDepth) = 0;
 
 % Make zero for no slopes
 F_it(obj.bx == 0 & obj.bx == 0) = 0;
-if strcmp(type,'tensor')
+if strcmp(type,'scalar')
+    F_it(H2_mesh == 0) = 0;
+elseif strcmp(type,'tensor')
     F_it(dJ(:,1) == 0 & dJ(:,1) == 0) = 0;
 end
 %
 %% Make into f13 struct
 if isempty(obj.f13)
-    
-end
-% Print header
-fprintf(fid,'%s \n','Spatial attributes description') ;
-fprintf(fid,'%d \n',length(F_it)) ;   
-fprintf(fid,'%d \n',1) ;  
-fprintf(fid,'%s \n','internal_tide_friction') ;
-fprintf(fid,'%s \n','1/time') ;
-if strcmp(type,'tensor') || strcmp(type,'directional')
-    fprintf(fid,'%d \n',3) ;
-    fprintf(fid,'%f %f %f\n',0.0,0.0,0.0) ;  
+    % Add internal_tide as first entry in f13 struct
+    obj.f13.AGRID = obj.title;
+    obj.f13.NumOfNodes = length(obj.b); 
+    obj.f13.nAttr = 1;
+    NA = 1;
 else
-    fprintf(fid,'%d \n',1) ;  
-    fprintf(fid,'%f \n',0.0) ;  
-end
-fprintf(fid,'%s \n','internal_tide_friction') ;
-%
-% Number of nodes not default (0.0)
-ne = length(find(F_it > 0));
-fprintf(fid,'%d \n',ne) ; 
-% Print out list of nodes for each
-for k = 1:length(F_it)
-    if F_it(k) > 0
-        if strcmp(type,'tensor')
-            % Output the C_11, C_12 = C_21, C_22 for the tensor
-            C_11 = 2*F_it(k)*dJx(k)*Hy(k);
-            C_22 = 2*F_it(k)*dJy(k)*Hx(k);
-            C_21 = F_it(k)*(dJx(k)*Hy(k) + dJy(k)*Hx(k));
-            %C_11 = 2*F_it(k)*dJ(k,1)*dh(k,1);
-            %C_22 = 2*F_it(k)*dJ(k,2)*dh(k,2);
-            %C_21 = F_it(k)*(dJ(k,1)*dh(k,2) + dJ(k,2)*dh(k,1));
-            fprintf(fid,'%d \t %15.9e %15.9e %15.9e \n',...
-                    k,C_11,C_22,C_21);
-        elseif strcmp(type,'directional')
-            % Output the C_11, C_12 = C_21, C_22 for the tensor
-            C_11 = F_it(k)*Hx(k)^2;
-            C_22 = F_it(k)*Hy(k)^2;
-            C_21 = F_it(k)*Hx(k)*Hy(k);
-            fprintf(fid,'%d \t %15.9e %15.9e %15.9e \n',...
-                    k,C_11,C_22,C_21); 
-        else
-            % Only need the F_it component
-            fprintf(fid,'%d \t %15.9e \n',k,F_it(k));
-            %fprintf(fid,'%d \t %15.9e \n',k,Nb(k));
+    broken = 0;
+    for NA = 1:obj.f13.nAttr
+        if strcmp('internal_tide_friction',obj.f13.defval.Atr(NA).AttrName)
+            broken = 1;
+            % overwrite existing internal_tide
+            break
         end
     end
+    if ~broken 
+        % add internal_tide to list
+        obj.f13.nAttr = obj.f13.nAttr + 1;
+        NA = obj.f13.nAttr;
+    end
 end
-fclose(fid);
+
+% Default Values
+obj.f13.defval.Atr(NA).AttrName = 'internal_tide_friction';  
+% We can just put in the options here
+obj.f13.defval.Atr(NA).Unit = strcat(type,', C_it = ',num2str(C_it),...
+                               ', ',num2str(crit),', D',num2str(MinDepth)); 
+if isempty(N_filename)
+    % We want to just give it the gradients of bathy (and J for the tensor)
+    % multiplied by C_it and calculate the full values inside of ADCIRC
+    % using N from say HYCOM
+    if strcmp(type,'tensor')
+        valpernode = 4;
+    elseif strcmp(type,'directional')
+        valpernode = 2;
+    elseif strcmp(type,'scalar')
+        valpernode = 1;
+    end
+else
+    % Provide the full coefficients
+    if strcmp(type,'scalar')
+        valpernode = 1;
+    else
+        valpernode = 3;
+    end
+end   
+obj.f13.defval.Atr(NA).ValuesPerNode = valpernode ;
+obj.f13.defval.Atr(NA).Val = zeros(1,valpernode) ;
+
+% User Values
+obj.f13.userval.Atr(NA).AttrName = 'internal_tide_friction' ;
+numnodes = length(find(F_it > 0));
+obj.f13.userval.Atr(NA).usernumnodes = numnodes ;
+% Print out list of nodes for each
+K = find(F_it > 0);
+if isempty(N_filename)
+    % We want to just give it the gradients of bathy (and J for the tensor)
+    % multiplied by C_it and calculate the full values inside of ADCIRC
+    % using N from say HYCOM
+    if strcmp(type,'tensor')
+        obj.f13.userval.Atr(NA).Val = [K repmat(F_it(K),1,4).*...
+                                       [obj.bx(K) obj.by(K) obj.dJ(K,:)]]';
+    elseif strcmp(type,'directional')
+        obj.f13.userval.Atr(NA).Val = [K repmat(F_it(K),1,2).*...
+                                      [obj.bx(K) obj.by(K)]]';
+    elseif strcmp(type,'scalar')
+        obj.f13.userval.Atr(NA).Val = [K F_it(K).*H2_mesh(K)]';
+    end
+else
+    % Provide the full coefficients
+    if strcmp(type,'scalar')
+        obj.f13.userval.Atr(NA).Val = [K; F_it(K).*H2_mesh(K)]';
+    elseif strcmp(type,'directional')
+        obj.f13.userval.Atr(NA).Val = [K F_it(K).*(obj.bx(K).^2) ...
+                     F_it(K).*(obj.by(K).^2) F_it(K).*(obj.bx(K).*obj.by(K))]';
+    elseif strcmp(type,'tensor')
+        obj.f13.userval.Atr(NA).Val = [K ...
+                                    2*F_it(K).*(obj.bx(K).*obj.dJ(K,1)) ...
+                                    2*F_it(K).*(obj.by(K).*obj.dJ(K,2)) ...
+               F_it(K).*(obj.dJ(K,1).*obj.by(K) + obj.dJ(K,2).*obj.bx(K))];
+        % Check if neg eigenvalue change to positive
+        C = obj.f13.userval.Atr(NA).Val(:,2:end);
+        for ii = 1:length(K)
+            A = [C(ii,1) C(ii,3); C(ii,3) C(ii,2)];
+            A = Eigen_neg_to_pos(A);
+            obj.f13.userval.Atr(NA).Val(ii,2:end) = [A(1,1) A(2,2) A(2,1)];
+        end
+        obj.f13.userval.Atr(NA).Val = obj.f13.userval.Atr(NA).Val';
+    end
+end 
+
 
 
