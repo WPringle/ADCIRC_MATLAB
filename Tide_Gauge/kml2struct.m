@@ -65,6 +65,16 @@ for ii = 1:Nos
             end
         end
     end
+        
+    % Find style
+    bucket = regexp(objectStrings{ii},'<styleUrl.*?>.+?</styleUrl>','match');
+    if isempty(bucket)
+        StyleUrl = 'undefined';
+    else
+        % Clip off flags
+        StyleUrl = regexprep(bucket{1},'<styleUrl.*?>\s*','');
+        StyleUrl = regexprep(StyleUrl,'\s*</styleUrl>','');
+    end
     
     geom = 0;
     % Identify Object Type
@@ -96,8 +106,11 @@ for ii = 1:Nos
     % to doubles
     coordMat = str2double(regexp(coordStr,'[,\s]+','split'));
     % Rearrange coordinates to form an x-by-3 matrix
+
     [m,n] = size(coordMat);
-    coordMat = reshape(coordMat,3,m*n/3)';
+    if m*n >= 3
+        coordMat = reshape(coordMat,3,m*n/3)';
+    end
     
     % define polygon in clockwise direction, and terminate
     [Lat, Lon] = poly2ccw(coordMat(:,2),coordMat(:,1));
@@ -117,4 +130,5 @@ for ii = 1:Nos
     kmlStruct(ii).Lon = Lon;
     kmlStruct(ii).Lat = Lat;
     kmlStruct(ii).BoundingBox = [[min(Lon) min(Lat);max(Lon) max(Lat)]];
+    kmlStruct(ii).StyleUrl = StyleUrl;
 end

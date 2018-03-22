@@ -1,25 +1,34 @@
 function obj = Calc_IT_Fric(obj,varargin)
-% f13dat = Calc_IT_Fric(obj,N_filename,type,C_it,MinDepth,crit)
+% obj = Calc_IT_Fric(obj,varargin)
 % Input a msh class object with bathy and slope data, get the values of N
 % over the depth based on N_filename (if is not empty) and calculate the
 % internal tide friction based on the input parameters   
 % 
-%  Inputs:      1) .mat files of N values at constant contours    %
-%               2) Unstructured grid mesh with bathymetry         %                           
-%  Outputs:     A fort.13 formatted file for use in ADCIRC/SMS    %
-%  Project:     Indian Ocean and Marginal Seas                    %
-%  Author:      William Pringle                                   %
-%  Created:     Oct 5 2016                                        %
-%  Updated:     Oct 24 2016, Dec 14 2016, Feb 25 2017             %
-%  Requires:    functions - readfort14, Compute_Nb_Nm, m_proj,    %
-%               m_ll2xy, ADCIRC_Bath_Slope, Compute_J_Nycander    %
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  Inputs:      1) A msh class obj with slopes and bathy on it
+%               2) Optional name-value arguments:
+%               'N_filename' : filename and directory of the buoyancy
+%               frequency .mat file. THIS IS USUALLY REQUIRED. 
+%               However, an empty filename is the default in
+%               which it will just output the slopes*Cit and ADCIRC will
+%               expect instead some buoyancy frequency information given to
+%               it (from e.g. HYCOM). 
+%               'type': 'directional' (default), 'tensor', or 'scalar'
+%               'crit': 'Nb' (default), 'Nmw'
+%               'Cit' : a multiplication values (0.25 is default, this is
+%               only appropriate for 'directional' type)
+%               'cutoff_depth': the depth which to cut off the
+%               internal_tide_friction below (100 [m] is the default)
+%
+%  Outputs:     1) msh class obj with internal_tide_friction values
+%                  populating the f13 struct
+%
+%  Author:      William Pringle                                 
+%  Created:     March 13 2018                                      
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % Some constants
 % Choose projection type (can be any, not restricted to evenly-gridded data)
 proj = 'Mercator';
-% Radius of earth for conversion to actual distances
-R = 6378206.4; %[m]
 % Coriolis coefficient
 psi = 2*7.29212d-5;
 % Choose tidal frequency to compute for (in rads^{-1}) - usually M2 freq.
@@ -33,7 +42,7 @@ C_it = 0.25;
 MinDepth = 100; % m 
 N_filename = []; % no N data (just print out slopes multiplied by C_it)
 if ~isempty(varargin)
-    names = {'type','cutoff_depth','Cit','Nfname'};
+    names = {'type','cutoff_depth','Cit','Nfname','crit'};
     for ii = 1:length(names)
         ind = find(~cellfun(@isempty,strfind(varargin(1:2:end),names{ii})));
         if ~isempty(ind)
@@ -45,6 +54,8 @@ if ~isempty(varargin)
                 C_it = varargin{ind*2};
             elseif ii == 4 
                 N_filename = varargin{ind*2};
+            elseif ii == 5 
+                crit = varargin{ind*2};
             end
         end    
     end
@@ -56,7 +67,8 @@ f = psi*sind(obj.p(:,2));
 %% Load the constant contours of N values and compute Nb and Nmean
 if ~isempty(N_filename)
     load(N_filename);  
-    [Nb,Nm,Nmw] = Compute_Nb_Nm_Gridded(obj.p(:,1),obj.p(:,2),obj.b,z,N,lon,lat);                   
+    [Nb,Nm,Nmw] = Compute_Nb_Nm_Gridded(obj.p(:,1),obj.p(:,2),obj.b,...
+                                        z,N,lon,lat);                   
 end
 
 %% Getting the J stuff if required (tensor type)
