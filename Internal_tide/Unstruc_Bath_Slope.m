@@ -11,7 +11,7 @@ function [Hx,Hy] = Unstruc_Bath_Slope( EToV,xx,yy,B)
 % Outputs  : Hx   - N x 1 vector of bathymetric slope in x direction
 %            Hy   - N x 1 vector of bathymetric slope in y direction
 %
-% Requires : VertToEle function (included in 'sub/' folder)
+% Requires : VertToEle function 
 %
 % Author   : William Pringle, Dec 12 2017
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
