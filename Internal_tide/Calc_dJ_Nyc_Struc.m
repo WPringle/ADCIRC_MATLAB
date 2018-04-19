@@ -113,74 +113,24 @@ d_x = m_idist(lon(J(1):J(end),I(1):I(end)),lat(J(1):J(end),I(1):I(end)),...
 d_y = m_idist(lon(J(1):J(end),I(1):I(end)),lat(J(1):J(end),I(1):I(end)),...
             lon(J(2):J(end)+1,I(1):I(end)),lat(J(2):J(end)+1,I(1):I(end)));
 
-% Get the coordinate Matrices
-xx = cumsum(d_x,2); 
-yy = cumsum(d_y,1); 
-
 % number of nodes to search back and forwards
-%y_n = ceil(rcutfac*a./d_y);
-%x_n = ceil(rcutfac*a./d_x);
+y_n = ceil(rcutfac*a./d_y);
+x_n = ceil(rcutfac*a./d_x);
 
 % Initialising the arrays
 dJx = zeros(size(lat_c)) ;
 dJy = zeros(size(lat_c)) ;
-
-% Find where we need to calc
-idv = find( h_c < hcut  & a > acut );
-% Make the coordinate matrix
-XX = [xx(idv) yy(idv)];
-% set up kdtree
-Mdl = KDTreeSearcher(XX); 
-% sort by radius
-[aiv, ia] = sort(a(idv));
-xiv = XX(ia,:);
-% number of times to do rangesearch
-nj = length(idv) ;
-blocks = ceil(nj*rcutfac^2*1.5e-6);
-nn = 0;
-disp(['number of blocks = ' num2str(blocks)])
-for ii = 1:blocks
-    tic
-    ns = int64((ii-1)*nj/blocks)+1;
-    ne = int64(ii*nj/blocks);
-    % Do range search
-    [Idx, Dist] = rangesearch(Mdl,xiv(ns:ne,:),rcutfac*aiv(ne));  
-    % Loop through Idx
-    for jj = 1:length(Idx)
-        nn = nn + 1;
-        val = gaussC(Dist{jj}(Dist{jj} < rcutfac*aiv(nn)), aiv(nn)^2); % Get the weights
-        val = val/norm(val,1); % divide by the norm
-        %val2 = greensF(Dist{jj}(Dist{jj} < rcutfac*aiv(nn))/aiv(nn)); % Get the weights
-        NbTemp(nn) = val*Nb(Idx{jj}(Dist{jj} < rcutfac*aiv(nn))); %sum the Nb with weights
-        % NbTemp(nn) = mean(Nb(Idx{jj}(Dist{jj} < aiv(nn))));
-    end
-    disp(['finished block no. = ' num2str(ii)])
-    toc
-end
-
-mcell = max(max(x_n(:)));
-% loop over x-dir searching nodes
-for xx = 1:mcell
-    % Get the difference of the topographic heights
-    JJ      = find(x_n == xx);
-    [r,c]   = ind2sub(size(lon_c),JJ);
-    ly_g = J(c);
-    lx_g = I(r);
-    range_x = max(lx_g - xx+1,1):min(lx_g + xx,size(lon,2));
-    range_y = max(ly_g - y_n(JJ)+1,1):min(ly_g + y_n(JJ),size(lat,1));
-    
-    back = bathy(J,I-xx+1);
-    forw = bathy(J,I+xx);
-    dhb = back(JJ) - h_c(JJ); 
-    dhf = forw(JJ) - h_c(JJ); 
-end
 
 % Compute the singlularity correction coefficients
 dh = bathy(J+1,I+1) + bathy(J,I+1) - bathy(J+1,I) - bathy(J,I);
 s = d_x./d_y;
 correc = ((2./s).*log(sqrt(s.^2 +1) + s) - 4*s.^2./(1+s.^2).^(3/2)).*dh;
 
+lat_n = length(J);
+lon_n = length(I);
 
+dhx = zeros(size(correc));
+dhy = zeros(size(correc));
 
 for l_y = 1:lat_n
     disp(['l_y = ' num2str(l_y)])
@@ -190,7 +140,7 @@ for l_y = 1:lat_n
         
         % Skip for small depths and small radii
         if h_c(l_y,l_x) > hcut; continue; end
-        if a(l_y,l_x)/1000 < acut; continue; end
+        if a(l_y,l_x) < acut; continue; end
         
         % Get global ID no.s
         lx_g = I(l_x);
@@ -200,12 +150,6 @@ for l_y = 1:lat_n
            - bathy(ly_g+1,lx_g) - bathy(ly_g,lx_g))/d_x(l_y,l_x);
         dhy(l_y,l_x) = 0.5*(bathy(ly_g+1,lx_g+1) + bathy(ly_g+1,lx_g) ...
            - bathy(ly_g,lx_g+1) - bathy(ly_g,lx_g))/d_y(l_y,l_x); 
-       
-        % Get the correction coefficient
-        dh = bathy(ly_g+1,lx_g+1) + bathy(ly_g,lx_g+1) ...
-           - bathy(ly_g+1,lx_g) - bathy(ly_g,lx_g);
-        s = d_x(l_y,l_x)/d_y(l_y,l_x);
-        correc = ((2/s)*log(sqrt(s^2 +1) + s) - 4*s^2/(1+s^2)^(3/2))*dh;
         
         % Get the range to search
         range_x = max(lx_g - x_n(l_y,l_x)+1,1):min(lx_g + x_n(l_y,l_x),size(lon,2));
@@ -238,8 +182,8 @@ for l_y = 1:lat_n
         Jy_sum = sum(NDI.*dy_r);
 
         % Multiply by dx,dy and add the correction for the singularity
-        dJx(l_y,l_x) = Jx_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc;
-        dJy(l_y,l_x) = Jy_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc;     
+        dJx(l_y,l_x) = Jx_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc(l_y,l_x);
+        dJy(l_y,l_x) = Jy_sum * d_x(l_y,l_x)*d_y(l_y,l_x) + correc(l_y,l_x);     
     end
     disp(['dJx = ' num2str(dJx(l_y,l_x))])
 end
@@ -252,3 +196,57 @@ if Tr
 end
 %EOF
 end
+
+% Some stuff could use to try speed up; not done
+% Get the coordinate Matrices
+%xx = cumsum(d_x,2); 
+%yy = cumsum(d_y,1); 
+% Find where we need to calc
+%idv = find( h_c < hcut  & a > acut );
+% % Make the coordinate matrix
+% XX = [xx(idv) yy(idv)];
+% % set up kdtree
+% Mdl = KDTreeSearcher(XX); 
+% % sort by radius
+% [aiv, ia] = sort(a(idv));
+% xiv = XX(ia,:);
+% % number of times to do rangesearch
+% nj = length(idv) ;
+% blocks = ceil(nj*rcutfac^2*1.5e-6);
+% nn = 0;
+% disp(['number of blocks = ' num2str(blocks)])
+% for ii = 1:blocks
+%     tic
+%     ns = int64((ii-1)*nj/blocks)+1;
+%     ne = int64(ii*nj/blocks);
+%     % Do range search
+%     [Idx, Dist] = rangesearch(Mdl,xiv(ns:ne,:),rcutfac*aiv(ne));  
+%     % Loop through Idx
+%     for jj = 1:length(Idx)
+%         nn = nn + 1;
+%         val = gaussC(Dist{jj}(Dist{jj} < rcutfac*aiv(nn)), aiv(nn)^2); % Get the weights
+%         val = val/norm(val,1); % divide by the norm
+%         %val2 = greensF(Dist{jj}(Dist{jj} < rcutfac*aiv(nn))/aiv(nn)); % Get the weights
+%         NbTemp(nn) = val*Nb(Idx{jj}(Dist{jj} < rcutfac*aiv(nn))); %sum the Nb with weights
+%         % NbTemp(nn) = mean(Nb(Idx{jj}(Dist{jj} < aiv(nn))));
+%     end
+%     disp(['finished block no. = ' num2str(ii)])
+%     toc
+% end
+% 
+% mcell = max(max(x_n(:)));
+% % loop over x-dir searching nodes
+% for xx = 1:mcell
+%     % Get the difference of the topographic heights
+%     JJ      = find(x_n == xx);
+%     [r,c]   = ind2sub(size(lon_c),JJ);
+%     ly_g = J(c);
+%     lx_g = I(r);
+%     range_x = max(lx_g - xx+1,1):min(lx_g + xx,size(lon,2));
+%     range_y = max(ly_g - y_n(JJ)+1,1):min(ly_g + y_n(JJ),size(lat,1));
+%     
+%     back = bathy(J,I-xx+1);
+%     forw = bathy(J,I+xx);
+%     dhb = back(JJ) - h_c(JJ); 
+%     dhf = forw(JJ) - h_c(JJ); 
+% end

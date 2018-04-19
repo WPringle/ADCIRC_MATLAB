@@ -1,6 +1,5 @@
-function [Nb,Nm,Nmw] = Compute_Nb_Nm_Gridded(lon_M,lat_M,B,zcontour,N,lon_N,lat_N)
-                                  %,lon0,lat0)
-% Compute_Nb_Nm_Gridded: Compute the buoyancy frequency, N at the seabed 
+function [Nb,Nm,Nmw] = Compute_Nb_Nm_Nmw(lon_M,lat_M,B,zcontour,N,lon_N,lat_N)
+% Compute_Nb_Nm_Nmw: Compute the buoyancy frequency, N at the seabed 
 %                (Nb) and the mean over the depth (Nm) for an unstructured 
 %                mesh from grid points of N at specified contours
 %

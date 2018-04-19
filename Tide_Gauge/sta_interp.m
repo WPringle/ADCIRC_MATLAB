@@ -2,6 +2,9 @@ function [a_int, p_int] = sta_interp(x,y,a,p,xq,yq)
     %Linear interpolation of z from scatter points
     %check for outliers and remove
 
+    if size(x,1) ~= size(a,1)
+       x = x'; y = y';
+    end
     % convert to complex number
     c = a.*exp(1i*deg2rad(p));
     

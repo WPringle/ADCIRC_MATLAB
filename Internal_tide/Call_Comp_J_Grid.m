@@ -17,7 +17,7 @@ omega = 2*pi/(12.4206012*3600); % M2 tidal frequency
 MinDepth = 100; % m 
 
 % n data filename (only .mat file atm)
-N_file = 'E:\Global_Data\WOD_CTD_Casts\Gridded_N_values.mat';
+N_file = 'E:\Global_Data\WOA_Data\Gridded_N_values.mat';
 
 % the gridded bathymetry data file
 bathyfile = ['E:\Global_Data\SRTM30_PLUS_w_Abyssal_Hills\' ...
@@ -41,10 +41,11 @@ lon = lon(I); lat = lat(J); bathy = bathy(I,J)';
 %Bf = load(N_file); 
 [lon, lat] = meshgrid(lon,lat);
 %Compute_Nb_Nm_Gridded(lon_M,lat_M,B,zcontour,N,lon_N,lat_N)
-%[~,Nm] = Compute_Nb_Nm_Gridded(lon,lat,-bathy,Bf.z,Bf.N,Bf.lon,Bf.lat);
+%[~,Nm] = Compute_Nb_Nm_Nmw(lon,lat,-bathy,Bf.z,Bf.N,Bf.lon,Bf.lat);
 % 
 %save(S_filename,'Nm');
 load(S_filename)
+
 [dJx, dJy, lon_c, lat_c] = Calc_dJ_Nyc_Struc(lon,lat,bathy,Nm,...
                                              omega,-MinDepth,1e3,bbox,0);
                                    
