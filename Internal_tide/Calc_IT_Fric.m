@@ -186,22 +186,28 @@ if isempty(N_filename)
     % multiplied by C_it and calculate the full values inside of ADCIRC
     % using N from say HYCOM
     if strcmp(type,'tensor')
+        % columns: node #, hxhx, hyhy, hxhy = hyhx
         obj.f13.userval.Atr(NA).Val = [K repmat(F_it(K),1,4).*...
                                        [obj.bx(K) obj.by(K) obj.dJ(K,:)]]';
     elseif strcmp(type,'directional')
+        % columns: node #, hxhx, hyhy, hxhy = hyhx
         obj.f13.userval.Atr(NA).Val = [K repmat(F_it(K),1,2).*...
                                       [obj.bx(K) obj.by(K)]]';
     elseif strcmp(type,'scalar')
+        % columns: node #, |grad(h)|^2
         obj.f13.userval.Atr(NA).Val = [K F_it(K).*H2_mesh(K)]';
     end
 else
     % Provide the full coefficients
     if strcmp(type,'scalar')
+        % columns: node #, |grad(h)|^2
         obj.f13.userval.Atr(NA).Val = [K F_it(K).*H2_mesh(K)]';
     elseif strcmp(type,'directional')
+        % columns: node #, hxhx, hyhy, hxhy = hyhx
         obj.f13.userval.Atr(NA).Val = [K F_it(K).*(obj.bx(K).^2) ...
                      F_it(K).*(obj.by(K).^2) F_it(K).*(obj.bx(K).*obj.by(K))]';
     elseif strcmp(type,'tensor')
+        % columns: node #, hxhx, hyhy, hxhy = hyhx
         obj.f13.userval.Atr(NA).Val = [K ...
                                     2*F_it(K).*(obj.bx(K).*obj.dJ(K,1)) ...
                                     2*F_it(K).*(obj.by(K).*obj.dJ(K,2)) ...
