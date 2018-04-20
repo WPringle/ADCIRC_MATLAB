@@ -1,29 +1,30 @@
-function [Nb,Nm,Nmw] = Compute_Nb_Nm_Nmw(lon_M,lat_M,B,zcontour,N,lon_N,lat_N)
-% Compute_Nb_Nm_Nmw: Compute the buoyancy frequency, N at the seabed 
-%                (Nb) and the mean over the depth (Nm) for an unstructured 
-%                mesh from grid points of N at specified contours
+function [Nb,Nm,Nmw,N_interp] = Gridded_to_Mesh_SeaBed_DepthAveraged(...
+                                      lon_M,lat_M,B,zcontour,N,lon_N,lat_N)
+% Gridded_to_Mesh_SeaBed_DepthAveraged: Interpolate gridded data at specified 
+% depth contours, such as buoyancy frequencies or densities, to an unstructured
+% grid, then compute that values at the seabed (Nb), the depth-averaged
+% value (Nm) and the weighted depth-averaged value (Nmw) 
 %
-% [Nb,Nm,Nmw] = Compute_Nb_Nm(lon_M,lat_M,B,zcontour,N,lon_N,lat_N,lon0,lat0)
 % Input : lon_M    - longitude points of nodes in mesh
 %         lat_M    - latitude points of nodes in mesh
 %         B        - depths of nodes in mesh
-%         zcontour - the contours where we have values of N
+%         zcontour - the depth contours where we have values of N
 %         N        - matrix of N  (lon,lat,z)
 %         lon_N    - vector of lon 
 %         lat_N    - vector of lat
-%         proj     - string that defines the projection to use
-%                    e.g. 'Mercator'.., (type m_proj('set') for options)
 %
-% Output : Nb     - Buoyancy frequency at seabed
-%          Nm     - Depth-averaged buoyancy frequency over depth
-%          Nmw    - Weighted depth-average buoyancy frequency (linearly
+% Output : Nb     - Data (e.g. Buoyancy frequency) at seabed
+%          Nm     - Depth-averaged value
+%          Nmw    - Weighted depth-average value (linearly
 %                   decreasing weights from bottom to surface)
 %
 % Author: William Pringle, CHL, Notre Dame University
 % Created: 2017-9-28
 
+% Get the ndgrid of lon_N and lat_N
 [Lon,Lat] = ndgrid(lon_N,lat_N);
-%% Calculation
+
+%% Do the interpolation at each depth contour
 % initialisation
 Nb = zeros(size(B)); Nm = zeros(size(B)); Nmw = zeros(size(B)); 
 % do the interpolation onto the mesh
@@ -47,7 +48,8 @@ for zvalue = 1:length(zcontour)
         end
     end
 end
-%
+
+%% Do the calculation over the depth
 for zvalue = 1:length(zcontour)  
     % Test whether we have data above us
     if zvalue < length(zcontour)
@@ -88,7 +90,7 @@ for zvalue = 1:length(zcontour)
         end
     end
 end
-% Divide Nm by depth
+% Divide our integrated values by the depth, and eliminate NaNs
 Nm = Nm./(B-zcontour(1));
 Nmw = Nmw./(B-zcontour(1));
 Nb(isnan(Nb)) = 0;
