@@ -89,7 +89,7 @@ if(read_bou)
     opedat.nope = nope ;
     opedat.neta = neta ;
     opedat.nvdll = nvdll ;
-    opedat.ibtypee = ibtypee ;
+    opedat.ibtype = ibtypee ;
     opedat.nbdv = nbdv ;
     
     % land boundary

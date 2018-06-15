@@ -1,17 +1,17 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%  Title:       Make_N_Profile                                    %
+%  Title:       Make_Gridded_N                                    %
 %  Description: Read NETCDF of CTD casts with vertical profiles   %
 %               of salinity temperature. Use TEOS toolbox to      %
 %               compute profiles of the buoyancy frequency, N.    %
-%  Inputs:      NETCDF files of CTD casts from the World Ocean    %
-%               Database. Obtain from:                            %
-%     http://www.nodc.noaa.gov/OC5/SELECT/dbsearch/dbsearch.html  %
+%  Inputs:      NETCDF files of gridded salinity and temeprature  %
+%               data e.g. from the World Ocean Database:          %
+%             https://www.nodc.noaa.gov/OC5/woa13/woa13data.html  %
 %  Outputs:     A .mat file of profiles of N at each desired      %
 %               contour level as specified at various locations   %
 %  Requires:    TEOS toolbox http://www.teos-10.org/software.htm  %
 %  Project:     Indian Ocean and Marginal Seas                    %
 %  Author:      William Pringle                                   %
-%  Created:     Oct 5 2016                                        %
+%  Created:     Oct 5 2016 , Updated Jun 15 2018                  %
 %                                                                 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

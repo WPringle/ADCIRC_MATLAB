@@ -67,7 +67,7 @@ for i = 1: boudat.nbou
             ['= Number of nodes for land boundary ' num2str(i)]) ; 
     
     switch ( boudat.ibtype(i) )
-        case {0,1,2,10,11,12,20,21,22,30,60,61,101,52}
+        case {0,1,2,10,11,12,20,21,22,30,32,60,61,101,52}
             % for k = 1: nvell(i)
             %   msgline  = fgetl(fid) ;
             %   nbvv(k,i) = str2num(msgline) ;

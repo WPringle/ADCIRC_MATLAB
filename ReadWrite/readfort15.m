@@ -260,7 +260,7 @@ if ( f15dat.nstae > 0 )
     for k = 1: f15dat.nstae
         val = readlinevec( fid ) ;
         
-        f15dat.elvstaloc(k,1:2) = val ;
+        f15dat.elvstaloc(k,1:2) = val(1:2)' ;
     end
 end
 

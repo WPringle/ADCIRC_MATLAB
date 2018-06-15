@@ -11,16 +11,16 @@
 %                                         fileexchange/35642-kml2struct
 %           inpoly.m
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-clearvars; clc; close all;
+%clearvars; clc; close all;
 
 %% Variables to set
-kmlfile = {'Global tide gauge database.kml'};
+kmlfile = {'May14_UpdatedStationPositions.kml'};
 
 % Set the constituents we wanna look at
 const = {'M2','S2','N2','K2','K1','O1','P1','Q1'};
 
 % Set output file name
-output = 'ECGC_StationList_NoRepeats.csv';
+output = 'PRVI_UpdatedStationPositions_NoRepeats.csv';
 
 % Sources in order of priority/reliability
 sources = {'Truth_Pelagic','Truth_Shelf','NOAA','JMA','AUS_Tides',...
@@ -52,7 +52,10 @@ for i = 1:height(T)
     elseif strcmp(T.Source{i}(end-5:end),'0F9D58') % green
         T.Source{i} = 'Truth_Coast';    
     elseif strcmp(T.Source{i}(end-5:end),'757575') % grey
-        T.Source{i} = 'NOAA';           
+        T.Source{i} = 'NOAA';  
+        % Trim the quotes
+        T.Name{i} = T.Name{i}(2:end-1);
+        %disp(T.Name{i})
     elseif strcmp(T.Source{i}(end-5:end),'673AB7') % dark purple
         T.Source{i} = 'JMA';            
     elseif strcmp(T.Source{i}(end-5:end),'FF5252') % coral
@@ -101,57 +104,59 @@ T.Description = [];
 T = [T T1];
 
 %% Only keep stations within our domain
-load ../../grd_CA_f11_f13_f15
-opedat = grd.op;
-boudat = grd.bd;
-VX     = grd.p;
-%idx = convhull(x,y);
+opedat = m.op;
+boudat = m.bd;
+VX     = m.p;
+%idx = convhull(VX(:,1),VX(:,2));
 %idx = boundary(x,y);
-%in = inpoly([T.Lon,T.Lat],[x(idx) y(idx)]);
 
-poly = []; 
-boudat.nbvv = full(boudat.nbvv);
-for op = 1:opedat.nope
-    % Get first openboundary
-    nodes = opedat.nbdv(1:opedat.nvdll(op),op);
-    if exist('node_o','var')
-        if nodes(1) ~= node_o(end)
-            nodes = flipud(nodes);
-        end
-    end
-    poly = [poly;  VX(nodes,:)];
-    
-    % Add the next land boundary
-    for i = 1:boudat.nbou
-        if boudat.nbvv(1,i) == nodes(end) || ...
-           boudat.nbvv(boudat.nvell(i),i) == nodes(end)
-            if boudat.nbvv(1,i) == nodes(end)
-                nodes = boudat.nbvv(1:boudat.nvell(i),i);
-            else
-                nodes = flipud(boudat.nbvv(1:boudat.nvell(i),i));
-            end
-            node_o = nodes;
-            mainland(op) = i;
-            poly = [poly;  VX(nodes,:)];
-            break;
-        end
-    end
-end
-if ~ispolycw(poly(:,1),poly(:,2))
-  poly = flipud(poly);
-end
-poly = [poly; NaN NaN];
-% Get the remaining boundaries
-for i = 1:boudat.nbou
-    if any(i == mainland); continue; end
-    nodes = boudat.nbvv(1:boudat.nvell(i),i);
-    if ispolycw(VX(nodes,1),VX(nodes,2))
-        nodes = flipud(nodes);
-    end
-    poly = [poly;  VX(nodes,:); NaN NaN]; 
-end
-edges = Get_poly_edges(poly);
-in = inpoly([T.Lon,T.Lat],poly,edges);
+in = T.Lon > -88.5 & T.Lon < -55 & T.Lat > 9 & T.Lat < 24;
+
+%in = inpoly([T.Lon,T.Lat],[VX(idx,1) VX(idx,2)]);
+
+% poly = []; 
+% boudat.nbvv = full(boudat.nbvv);
+% for op = 1:opedat.nope
+%     % Get first openboundary
+%     nodes = opedat.nbdv(1:opedat.nvdll(op),op);
+%     if exist('node_o','var')
+%         if nodes(1) ~= node_o(end)
+%             nodes = flipud(nodes);
+%         end
+%     end
+%     poly = [poly;  VX(nodes,:)];
+%     
+%     % Add the next land boundary
+%     for i = 1:boudat.nbou
+%         if boudat.nbvv(1,i) == nodes(end) || ...
+%            boudat.nbvv(boudat.nvell(i),i) == nodes(end)
+%             if boudat.nbvv(1,i) == nodes(end)
+%                 nodes = boudat.nbvv(1:boudat.nvell(i),i);
+%             else
+%                 nodes = flipud(boudat.nbvv(1:boudat.nvell(i),i));
+%             end
+%             node_o = nodes;
+%             mainland(op) = i;
+%             poly = [poly;  VX(nodes,:)];
+%             break;
+%         end
+%     end
+% end
+% if ~ispolycw(poly(:,1),poly(:,2))
+%   poly = flipud(poly);
+% end
+% poly = [poly; NaN NaN];
+% % Get the remaining boundaries
+% for i = 1:boudat.nbou
+%     if any(i == mainland); continue; end
+%     nodes = boudat.nbvv(1:boudat.nvell(i),i);
+%     if ispolycw(VX(nodes,1),VX(nodes,2))
+%         nodes = flipud(nodes);
+%     end
+%     poly = [poly;  VX(nodes,:); NaN NaN]; 
+% end
+% edges = Get_poly_edges(poly);
+% in = inpoly([T.Lon,T.Lat],poly,edges);
 
 T = T(in,:);
 
