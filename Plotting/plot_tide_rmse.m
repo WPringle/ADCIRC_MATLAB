@@ -21,6 +21,12 @@ tpxo9 = 'h_**_tpxo9_atlas_30.nc';
 projection = 'Miller';
 % the constituent(s) to look at
 conn = {'M2'}; 
+% color range for rmse
+crange = [0 0.25]; % [m]
+% number of discrete colors in colormap 
+ncolor = 20; 
+% background color (this is a sort of brown)       
+bgc = [166 132 97]/255;
 
 %% Computation starts here
 % make output directory if doesn't exist
@@ -111,10 +117,10 @@ for ff = 1:length(filenames)
        m_proj(projection,'long',[min(x) max(x)],'lat',[min(y) max(y)])
        m_trisurf(ele,x,y,real(RMS));
        ax = gca;
-       ax.Color = [166 132 97]/255;
+       ax.Color = bgc;
        m_grid()
-       caxis([0 0.25])
-       cmocean('amp',20)
+       caxis(crange)
+       cmocean('amp',ncolor)
        cb = colorbar;
        cb.Label.String = 'RMSE [m]';
        print([outdir '/' filenames(ff).name(1:end-6) '_' conn{c} '_rmse.png'],'-dpng','-r300')

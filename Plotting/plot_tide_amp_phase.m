@@ -16,6 +16,14 @@ outdir = 'figs/';
 projection = 'Miller';
 % the constituent(s) to look at
 conn = {'M2'}; 
+% color range for amp
+crange = [0 1.6]; % [m]
+% number of discrete colors in colormap 
+ncolor = 16; 
+% contour intervals
+cint = 0:30:360; % every 30 deg
+% background color (this is a sort of brown)       
+bgc = [166 132 97]/255;
 
 %% Computation starts here
 % make output directory if doesn't exist
@@ -47,12 +55,12 @@ for ff = 1:length(filenames)
        figure;
        m_proj(projection,'long',[min(x) max(x)],'lat',[min(y) max(y)])
        m_trisurf(ele,x,y,a_m);
-       m_tricontour(ele,[x,y],g_m,0:30:360,'k');
+       m_tricontour(ele,[x,y],g_m,cint,'k');
        ax = gca;
-       ax.Color = [166 132 97]/255;
+       ax.Color = bgc;
        m_grid()
-       caxis([0 1.6])
-       colormap(lansey(16))
+       caxis(crange)
+       colormap(lansey(ncolor))
        cb = colorbar;
        cb.Label.String = 'amplitude [m]';
        print([outdir filenames(ff).name(1:end-6) '_' conn{c} '_amp+phase.png'],'-dpng','-r300')
