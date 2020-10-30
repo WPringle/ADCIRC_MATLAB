@@ -1,18 +1,28 @@
 % Plots the tidal amplitude and phases of desired constituents from a list of fort.53.nc files
 clearvars; clc; close all; 
 
+%% User sets up their inputs and parameters here
+% adding your paths for m_map, OM2D and data etc
 addpath(genpath('~/MATLAB/m_map'))
 addpath(genpath('~/MATLAB/OceanMesh2D'))
 
 % list of fort 53 files
 filenames = dir('*53.nc');
+% output folder (make empty if save to current one)
+outdir = 'figs/';
 
+% % some parameters
 % plot projection
 projection = 'Miller';
-
 % the constituent(s) to look at
 conn = {'M2'}; 
 
+%% Computation starts here
+% make output directory if doesn't exist
+if ~isempty(outdir) && ~isfolder(outdir)
+   mkdir(outdir)
+end
+% Loop over all the fort.53.nc ADCIRC files
 for ff = 1:length(filenames)
    fort53 = filenames(ff).name; 
    disp(fort53)
@@ -45,6 +55,6 @@ for ff = 1:length(filenames)
        colormap(lansey(16))
        cb = colorbar;
        cb.Label.String = 'amplitude [m]';
-       print([fort53(1:end-6) '_' conn{c} '_amp+phase.png'],'-dpng','-r300')
+       print([outdir filenames(ff).name(1:end-6) '_' conn{c} '_amp+phase.png'],'-dpng','-r300')
    end
 end
