@@ -3,13 +3,12 @@ clearvars; clc; close all;
 
 %% User sets up their inputs and parameters here
 % adding your paths for m_map, OM2D and data etc
-addpath(genpath('~/MATLAB/m_map'))
 addpath(genpath('~/MATLAB/OceanMesh2D'))
 
 % list of fort 53 files
 filenames = dir('*53.nc');
 % output folder (make empty if save to current one)
-outdir = 'figs/';
+outdir = 'tide_figs/';
 
 % % some parameters
 % plot projection
@@ -21,8 +20,10 @@ crange = [0 1.6]; % [m]
 % number of discrete colors in colormap 
 ncolor = 16; 
 % contour intervals
-cint = 0:30:360; % every 30 deg
-% background color (this is a sort of brown)       
+cinterval = 30; %every 30 deg
+crange1 = 90:cinterval:270;   
+crange2 = [-90:cinterval:90]; 
+% ba2ckground color (this is a sort of brown)       
 bgc = [166 132 97]/255;
 
 %% Computation starts here
@@ -55,7 +56,18 @@ for ff = 1:length(filenames)
        figure;
        m_proj(projection,'long',[min(x) max(x)],'lat',[min(y) max(y)])
        m_trisurf(ele,x,y,a_m);
-       m_tricontour(ele,[x,y],g_m,cint,'k');
+       % two-step contour plotting method to avoid 0-360 
+       % wrap-around interpolation issues which create bad contour lines
+       % plot cint1 = 90:270
+       g_mo = g_m;
+       g_m(g_m < crange1(1)-cinterval/2 | g_m > crange1(end)+cinterval/2) = NaN;
+       m_tricontour(ele,[x,y],g_m,crange1,'k');
+       % plot 0:90,270:360, as cint2 = -90:90)
+       g_m = g_mo;
+       g_m(g_m > 180) = g_m(g_m > 180) - 360; 
+       g_m(g_m < crange2(1)-cinterval/2 | g_m > crange2(end)+cinterval/2) = NaN;
+       m_tricontour(ele,[x,y],g_m,crange2,'k');
+       %
        ax = gca;
        ax.Color = bgc;
        m_grid()
